@@ -526,6 +526,7 @@
       img.src = file;
       img.onload = () => { burglarSprites[name] = img; };
       img.onerror = () => console.warn("Failed to load", file);
+      loadImage;
     }
 
     loadBurglarSprite("standing", "BGStanding.png");
@@ -1030,17 +1031,25 @@
       );
       ctx.stroke();
 
-      // punch overlay (under HUD)
+      // punch overlay (under HUD, reaches further into play area)
       const frame = getPunchFrame();
       if (frame) {
         const hudHeight = 90;
         const hudTop = h - hudHeight;
-        const scale = 2.2;
+        const scale = 2.4;                 // slightly bigger punch
         const imgW = frame.width * scale;
         const imgH = frame.height * scale;
-        const x = canvas.width / 2 - imgW / 2 + 60;
-        let y = hudTop - imgH + 35;
-        if (y < halfH) y = halfH;
+
+        // centered, but slightly to the right like classic Doom
+        const x = canvas.width / 2 - imgW / 2 + 40;
+
+        // start higher so more of the arm is visible above the HUD
+        let y = hudTop - imgH - 10;        // push further up past HUD
+
+        // gentle clamp so it doesn't go too high
+        const minY = halfH - 40;           // allow well above mid, but not crazy
+        if (y < minY) y = minY;
+
         ctx.drawImage(frame, x, y, imgW, imgH);
       }
 
