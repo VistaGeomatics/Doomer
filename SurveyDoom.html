@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -91,16 +91,30 @@
     let bgmStarted = false;
     function startBgm() {
       if (bgmStarted || !bgm) return;
-      bgm.volume = 0.45;
-      bgm.play().catch(() => {});
-      bgmStarted = true;
+      try {
+        bgm.volume = 0.45;
+        const p = bgm.play();
+        if (p && typeof p.catch === "function") {
+          p.catch(() => {});
+        }
+        bgmStarted = true;
+      } catch (e) {
+        console.warn("BGM error:", e);
+      }
     }
 
     function playPunchSound() {
-      if (!punchSfx) return;
-      punchSfx.volume = 1.0; // louder than music
-      punchSfx.currentTime = 0;
-      punchSfx.play().catch(() => {});
+      try {
+        if (!punchSfx) return;
+        punchSfx.volume = 1.0; // louder than music
+        punchSfx.currentTime = 0;
+        const p = punchSfx.play();
+        if (p && typeof p.catch === "function") {
+          p.catch(() => {});
+        }
+      } catch (e) {
+        console.warn("Punch sound error:", e);
+      }
     }
 
     // =============== MAP ===============
@@ -132,7 +146,6 @@
     const MAP_WIDTH  = asciiMap[0].length;
     const TILE_SIZE = 64;
 
-    // 0 = floor, 1 = wall
     const map = asciiMap.map(row =>
       row.split("").map(ch => (ch === "." || ch === "P") ? 0 : 1)
     );
@@ -160,14 +173,14 @@
     const depthBuffer = new Array(NUM_RAYS);
 
     // =============== GAME STATE ===============
-    const TIME_LIMIT = 60; // 1 minute now
+    const TIME_LIMIT = 60; // 1 minute
     let elapsedTime = 0;
     let continuesLeft = 1;
 
     // "title", "prescreen", "playing", "won", "continue", "gameover"
     let gameState = "title";
 
-    // global time for animations (timer flash)
+    // global time for timer flashing
     let globalTime = 0;
 
     // =============== INPUT ===============
@@ -176,12 +189,11 @@
       startBgm();
 
       if (!keys[e.code]) {
-        // Flow between screens
         if ((e.code === "Space" || e.code === "Enter") && gameState === "title") {
           gameState = "prescreen";
           updateStatusText();
         } else if ((e.code === "Space" || e.code === "Enter") && gameState === "prescreen") {
-          resetRun(); // sets gameState to "playing"
+          resetRun(); // sets gameState = "playing"
         } else if (e.code === "Space" && gameState === "playing" && !punchState.active) {
           startPunch();
         } else if (e.code === "KeyC" && gameState === "continue" && continuesLeft > 0) {
@@ -259,29 +271,28 @@
     updateStatusText();
 
     function resetRun() {
-      // reset player
       player.x = spawnX * TILE_SIZE;
       player.y = spawnY * TILE_SIZE;
       player.angle = 0;
 
-      // reset enemies
       for (let i = 0; i < enemies.length; i++) {
         const base = enemyBasePositions[i];
-        enemies[i].x = base.x;
-        enemies[i].y = base.y;
-        enemies[i].alive = true;
-        enemies[i].health = 3;
-        enemies[i].state = "alive";
-        enemies[i].deathTimer = 0;
-        enemies[i].finalHitTimer = 0;
-        enemies[i].dir = Math.random() * Math.PI * 2;
-        enemies[i].turnTimer = 1 + Math.random() * 2;
-        enemies[i].animTime = 0;
-        enemies[i].animFrame = 0;
-        enemies[i].moving = false;
-        enemies[i].movingAway = false;
-        enemies[i].prevDistToPlayer = 0;
-        enemies[i].hitTimer = 0;
+        const e = enemies[i];
+        e.x = base.x;
+        e.y = base.y;
+        e.alive = true;
+        e.health = 3;
+        e.state = "alive";
+        e.deathTimer = 0;
+        e.finalHitTimer = 0;
+        e.dir = Math.random() * Math.PI * 2;
+        e.turnTimer = 1 + Math.random() * 2;
+        e.animTime = 0;
+        e.animFrame = 0;
+        e.moving = false;
+        e.movingAway = false;
+        e.prevDistToPlayer = 0;
+        e.hitTimer = 0;
       }
 
       itemsCollected = 0;
@@ -449,6 +460,7 @@
       const img = new Image();
       img.src = file;
       img.onload = () => { punchImagesLoaded++; };
+      img.onerror = () => console.warn("Failed to load", file);
       punchImages[idx] = img;
     });
 
@@ -458,7 +470,12 @@
       let frameIndex = 0;
       if (t > 0.4 && t <= 0.8) frameIndex = 1;
       else if (t > 0.8) frameIndex = 2;
-      return punchImages[frameIndex];
+
+      const img = punchImages[frameIndex];
+      if (!img || !img.complete || img.naturalWidth === 0 || img.naturalHeight === 0) {
+        return null;
+      }
+      return img;
     }
 
     // =============== TEXTURES ===============
@@ -476,7 +493,10 @@
       floorCtx.clearRect(0, 0, floorCanvas.width, floorCanvas.height);
       floorCtx.drawImage(floorImg, 0, 0, floorCanvas.width, floorCanvas.height);
       floorPattern = ctx.createPattern(floorCanvas, "repeat");
-      floorTextureReady = true;
+      floorTextureReady = !!floorPattern;
+    };
+    floorImg.onerror = () => {
+      console.warn("Failed to load floor 69.jpg");
     };
 
     const wallTextureFiles = ["Wall1.png", "Wall2.png", "wall3.png"];
@@ -484,6 +504,7 @@
     wallTextureFiles.forEach((file, idx) => {
       const img = new Image();
       img.src = file;
+      img.onerror = () => console.warn("Failed to load", file);
       wallTextures[idx] = img;
     });
 
@@ -504,6 +525,7 @@
       const img = new Image();
       img.src = file;
       img.onload = () => { burglarSprites[name] = img; };
+      img.onerror = () => console.warn("Failed to load", file);
     }
 
     loadBurglarSprite("standing", "BGStanding.png");
@@ -514,11 +536,12 @@
     loadBurglarSprite("falling", "Falling1.png");
     loadBurglarSprite("dead",    "Dead.png");
 
-    // =============== HUD & SCREEN ASSETS ===============
+    // =============== HUD & SCREENS ===============
     function loadImage(path, onload) {
       const img = new Image();
       img.src = path;
       img.onload = () => onload && onload(img);
+      img.onerror = () => console.warn("Failed to load", path);
       return img;
     }
 
@@ -546,25 +569,22 @@
       cont: loadImage("Continue.png")
     };
 
-    // Fit whole image inside canvas (no cropping)
     function drawFullScreenImage(img) {
       const w = canvas.width;
       const h = canvas.height;
       ctx.fillStyle = "#000";
       ctx.fillRect(0, 0, w, h);
-      if (!img || !img.complete || img.naturalWidth === 0) return;
+      if (!img || !img.complete || img.naturalWidth === 0 || img.naturalHeight === 0) return;
 
       const imgRatio = img.width / img.height;
       const canvasRatio = w / h;
       let drawW, drawH;
 
-      // "contain" scaling so entire image is visible
+      // contain fits entire image inside canvas
       if (imgRatio > canvasRatio) {
-        // limited by width
         drawW = w;
         drawH = w / imgRatio;
       } else {
-        // limited by height
         drawH = h;
         drawW = h * imgRatio;
       }
@@ -576,18 +596,17 @@
 
     // =============== UPDATE LOOP ===============
     function update(dt) {
-      // Let punch animation finish in non-playing states
-      if (gameState !== "playing") {
-        if (punchState.active) {
-          punchState.time += dt;
-          if (punchState.time >= punchState.duration) {
-            punchState.active = false;
-            punchState.time = 0;
-            punchState.justHit = false;
-          }
+      // Let punch animation run even if not playing
+      if (punchState.active) {
+        punchState.time += dt;
+        if (punchState.time >= punchState.duration) {
+          punchState.active = false;
+          punchState.time = 0;
+          punchState.justHit = false;
         }
-        return;
       }
+
+      if (gameState !== "playing") return;
 
       const moveSpeed = 170;
       const rotSpeed  = 2.8;
@@ -608,20 +627,10 @@
       if (!isSolid(newX, player.y)) player.x = newX;
       if (!isSolid(player.x, newY)) player.y = newY;
 
-      if (punchState.active) {
-        punchState.time += dt;
-        if (punchState.time >= punchState.duration) {
-          punchState.active = false;
-          punchState.time = 0;
-          punchState.justHit = false;
-        }
-      }
-
       updateEnemies(dt);
 
       elapsedTime += dt;
 
-      // time limit check
       if (elapsedTime >= TIME_LIMIT && itemsCollected < totalItems && gameState === "playing") {
         if (continuesLeft > 0) {
           gameState = "continue";
@@ -728,7 +737,7 @@
         const { enemy, dist, diff } = obj;
         const screenX = (0.5 + (diff / FOV)) * w;
         const sprite = chooseBurglarFrame(enemy);
-        if (!sprite) continue;
+        if (!sprite || !sprite.complete || sprite.naturalWidth === 0 || sprite.naturalHeight === 0) continue;
 
         const spriteHeight = (TILE_SIZE / dist) * 360;
         const spriteWidth  = spriteHeight * (sprite.width / sprite.height);
@@ -775,12 +784,16 @@
         const y1 = halfH + t1 * halfH;
         const sliceH = y1 - y0;
 
-        const scale = farScale + (nearScale - farScale) * t1;
+        let scale = farScale + (nearScale - farScale) * t1;
 
-        const m = new DOMMatrix();
-        m.a = scale;
-        m.d = scale;
-        floorPattern.setTransform(m);
+        if (typeof DOMMatrix === "function") {
+          const m = new DOMMatrix();
+          m.a = scale;
+          m.d = scale;
+          if (floorPattern.setTransform) {
+            floorPattern.setTransform(m);
+          }
+        }
 
         ctx.save();
         ctx.fillStyle = floorPattern;
@@ -802,7 +815,7 @@
       const hudHeight = 90;
       const hudTop = h - hudHeight;
 
-      if (hud.bar && hud.bar.complete) {
+      if (hud.bar && hud.bar.complete && hud.bar.naturalWidth > 0) {
         ctx.drawImage(hud.bar, 0, hudTop, w, hudHeight);
       } else {
         ctx.fillStyle = "#222";
@@ -817,8 +830,12 @@
       const itemScales = [0.45, 0.45, 0.18, 0.20, 0.45];
 
       for (let i = 0; i < 5; i++) {
-        if (itemsCollected > i && hud.items[i] && hud.items[i].complete) {
-          const img = hud.items[i];
+        const img = hud.items[i];
+        if (itemsCollected > i &&
+            img &&
+            img.complete &&
+            img.naturalWidth > 0 &&
+            img.naturalHeight > 0) {
           const scale = itemScales[i];
           const iw = img.width * scale;
           const ih = img.height * scale;
@@ -832,9 +849,9 @@
       let faceImg = null;
       if (punchState.active &&
           punchState.time < punchState.duration * 0.5 &&
-          hud.angryFace && hud.angryFace.complete) {
+          hud.angryFace && hud.angryFace.complete && hud.angryFace.naturalWidth > 0) {
         faceImg = hud.angryFace;
-      } else if (hud.happyFace && hud.happyFace.complete) {
+      } else if (hud.happyFace && hud.happyFace.complete && hud.happyFace.naturalWidth > 0) {
         faceImg = hud.happyFace;
       }
 
@@ -863,7 +880,6 @@
       ctx.textBaseline = "middle";
 
       if (isCritical) {
-        // subtle flashing color
         ctx.fillStyle = flashOn ? "#ff5555" : "#660000";
       } else {
         ctx.fillStyle = "#ff3333";
@@ -880,7 +896,7 @@
 
       ctx.clearRect(0, 0, w, h);
 
-      // Screen-only states
+      // Full-screen image states
       if (gameState === "title") {
         drawFullScreenImage(screens.title);
         return;
@@ -902,7 +918,7 @@
         return;
       }
 
-      // From here on, gameState is "playing"
+      // playing
       const ceilingGrad = ctx.createLinearGradient(0, 0, 0, halfH);
       ceilingGrad.addColorStop(0, "#101015");
       ceilingGrad.addColorStop(1, "#181820");
@@ -934,7 +950,7 @@
           ((hitMapX + hitMapY) % wallTextures.length + wallTextures.length) % wallTextures.length;
         const tex = wallTextures[texIndex];
 
-        if (tex && tex.complete && tex.width > 0) {
+        if (tex && tex.complete && tex.naturalWidth > 0 && tex.naturalHeight > 0) {
           const texW = tex.width;
           const texH = tex.height;
 
@@ -1014,7 +1030,7 @@
       );
       ctx.stroke();
 
-      // fist overlay – under HUD
+      // punch overlay (under HUD)
       const frame = getPunchFrame();
       if (frame) {
         const hudHeight = 90;
@@ -1036,7 +1052,7 @@
     function loop(now) {
       const dt = (now - lastTime) / 1000;
       lastTime = now;
-      globalTime += dt;         // for timer flash
+      globalTime += dt;
       update(dt);
       render();
       requestAnimationFrame(loop);
