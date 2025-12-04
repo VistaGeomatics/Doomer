@@ -87,26 +87,26 @@
     canvas.width = 960;
     canvas.height = 540;
 
-    // --- Music on first input ---
-    let bgmStarted = false;
+    // ===== MUSIC & SFX =====
     function startBgm() {
-      if (bgmStarted || !bgm) return;
+      if (!bgm) return;
       try {
         bgm.volume = 0.45;
-        const p = bgm.play();
-        if (p && typeof p.catch === "function") {
-          p.catch(() => {});
+        if (bgm.paused) {
+          const p = bgm.play();
+          if (p && typeof p.catch === "function") {
+            p.catch(() => {});
+          }
         }
-        bgmStarted = true;
       } catch (e) {
         console.warn("BGM error:", e);
       }
     }
 
     function playPunchSound() {
+      if (!punchSfx) return;
       try {
-        if (!punchSfx) return;
-        punchSfx.volume = 1.0; // louder than music
+        punchSfx.volume = 1.0;
         punchSfx.currentTime = 0;
         const p = punchSfx.play();
         if (p && typeof p.catch === "function") {
@@ -117,7 +117,7 @@
       }
     }
 
-    // =============== MAP ===============
+    // ===== MAP =====
     const asciiMap = [
       "################################",
       "#...............##............#",
@@ -150,7 +150,7 @@
       row.split("").map(ch => (ch === "." || ch === "P") ? 0 : 1)
     );
 
-    // =============== PLAYER ===============
+    // ===== PLAYER =====
     let spawnX = 1.5, spawnY = 1.5;
     for (let y = 0; y < MAP_HEIGHT; y++) {
       for (let x = 0; x < MAP_WIDTH; x++) {
@@ -172,18 +172,15 @@
     const MAX_DEPTH = 18 * TILE_SIZE;
     const depthBuffer = new Array(NUM_RAYS);
 
-    // =============== GAME STATE ===============
+    // ===== GAME STATE =====
     const TIME_LIMIT = 60; // 1 minute
     let elapsedTime = 0;
     let continuesLeft = 1;
-
     // "title", "prescreen", "playing", "won", "continue", "gameover"
     let gameState = "title";
+    let globalTime = 0; // for blinking timer
 
-    // global time for timer flashing
-    let globalTime = 0;
-
-    // =============== INPUT ===============
+    // ===== INPUT =====
     const keys = {};
     window.addEventListener("keydown", e => {
       startBgm();
@@ -193,7 +190,7 @@
           gameState = "prescreen";
           updateStatusText();
         } else if ((e.code === "Space" || e.code === "Enter") && gameState === "prescreen") {
-          resetRun(); // sets gameState = "playing"
+          resetRun();
         } else if (e.code === "Space" && gameState === "playing" && !punchState.active) {
           startPunch();
         } else if (e.code === "KeyC" && gameState === "continue" && continuesLeft > 0) {
@@ -218,7 +215,7 @@
       return tileAt(tx, ty) !== 0;
     }
 
-    // =============== ENEMIES ===============
+    // ===== ENEMIES =====
     const enemyBasePositions = [
       { x: (6.5)  * TILE_SIZE, y: (3.5)  * TILE_SIZE },
       { x: (22.5) * TILE_SIZE, y: (3.5)  * TILE_SIZE },
@@ -260,7 +257,7 @@
           `Time's up! Press C to continue (${continuesLeft} left).`;
       } else if (gameState === "gameover") {
         statusEl.textContent =
-          "Game Over – no continues left. Refresh the page to try again.";
+          "Game Over – no continues left. Refresh to try again.";
       } else if (gameState === "playing") {
         statusEl.textContent =
           `GPS pieces recovered: ${itemsCollected} / ${totalItems}  |  Continues: ${continuesLeft}`;
@@ -268,7 +265,6 @@
         statusEl.textContent = "";
       }
     }
-    updateStatusText();
 
     function resetRun() {
       player.x = spawnX * TILE_SIZE;
@@ -390,7 +386,7 @@
       }
     }
 
-    // =============== PUNCH ===============
+    // ===== PUNCH =====
     const punchState = {
       active: false,
       time: 0,
@@ -453,10 +449,10 @@
       }
     }
 
-    // =============== PUNCH SPRITES ===============
+    // ===== PUNCH SPRITES =====
     const punchImages = [];
     let punchImagesLoaded = 0;
-    ["punch1.png", "punch2.png", "punch3.png"].forEach((file, idx) => {
+    ["Punch1.png", "punch2.png", "Punch3.png"].forEach((file, idx) => {
       const img = new Image();
       img.src = file;
       img.onload = () => { punchImagesLoaded++; };
@@ -478,7 +474,7 @@
       return img;
     }
 
-    // =============== TEXTURES ===============
+    // ===== TEXTURES =====
     const floorCanvas = document.createElement("canvas");
     floorCanvas.width = 96;
     floorCanvas.height = 96;
@@ -495,9 +491,7 @@
       floorPattern = ctx.createPattern(floorCanvas, "repeat");
       floorTextureReady = !!floorPattern;
     };
-    floorImg.onerror = () => {
-      console.warn("Failed to load floor 69.jpg");
-    };
+    floorImg.onerror = () => console.warn("Failed to load floor 69.jpg");
 
     const wallTextureFiles = ["Wall1.png", "Wall2.png", "wall3.png"];
     const wallTextures = [];
@@ -510,7 +504,7 @@
 
     const WALL_TEX_SCALE = 2.5;
 
-    // =============== BURGLAR SPRITES ===============
+    // ===== BURGLAR SPRITES =====
     const burglarSprites = {
       standing: null,
       walk1: null,
@@ -526,7 +520,6 @@
       img.src = file;
       img.onload = () => { burglarSprites[name] = img; };
       img.onerror = () => console.warn("Failed to load", file);
-      loadImage;
     }
 
     loadBurglarSprite("standing", "BGStanding.png");
@@ -537,7 +530,7 @@
     loadBurglarSprite("falling", "Falling1.png");
     loadBurglarSprite("dead",    "Dead.png");
 
-    // =============== HUD & SCREENS ===============
+    // ===== HUD & SCREENS =====
     function loadImage(path, onload) {
       const img = new Image();
       img.src = path;
@@ -581,7 +574,7 @@
       const canvasRatio = w / h;
       let drawW, drawH;
 
-      // contain fits entire image inside canvas
+      // contain scale
       if (imgRatio > canvasRatio) {
         drawW = w;
         drawH = w / imgRatio;
@@ -595,9 +588,9 @@
       ctx.drawImage(img, dx, dy, drawW, drawH);
     }
 
-    // =============== UPDATE LOOP ===============
+    // ===== UPDATE =====
     function update(dt) {
-      // Let punch animation run even if not playing
+      // punch animation always ticks
       if (punchState.active) {
         punchState.time += dt;
         if (punchState.time >= punchState.duration) {
@@ -642,7 +635,7 @@
       }
     }
 
-    // =============== RAYCAST ===============
+    // ===== RAYCAST =====
     function castRay(rayAngle) {
       rayAngle = (rayAngle + Math.PI * 2) % (Math.PI * 2);
       const sin = Math.sin(rayAngle);
@@ -692,7 +685,7 @@
       };
     }
 
-    // =============== ENEMY RENDERING ===============
+    // ===== ENEMY RENDERING =====
     function getVisibleEnemies() {
       const result = [];
       for (const enemy of enemies) {
@@ -761,7 +754,7 @@
       }
     }
 
-    // =============== PERSPECTIVE FLOOR ===============
+    // ===== FLOOR =====
     function renderFloorWithPerspective() {
       const w = canvas.width;
       const h = canvas.height;
@@ -787,13 +780,11 @@
 
         let scale = farScale + (nearScale - farScale) * t1;
 
-        if (typeof DOMMatrix === "function") {
+        if (typeof DOMMatrix !== "undefined" && floorPattern && typeof floorPattern.setTransform === "function") {
           const m = new DOMMatrix();
           m.a = scale;
           m.d = scale;
-          if (floorPattern.setTransform) {
-            floorPattern.setTransform(m);
-          }
+          floorPattern.setTransform(m);
         }
 
         ctx.save();
@@ -809,7 +800,7 @@
       }
     }
 
-    // =============== HUD RENDERING ===============
+    // ===== HUD =====
     function renderHUD() {
       const w = canvas.width;
       const h = canvas.height;
@@ -864,7 +855,7 @@
         ctx.drawImage(faceImg, cx - iw / 2, centerY - ih / 2, iw, ih);
       }
 
-      // countdown timer
+      // countdown timer (with flashing last 10s)
       const timerX = colW * (6 + 0.5);
       const remaining = Math.max(0, TIME_LIMIT - elapsedTime);
       const totalSeconds = Math.floor(remaining);
@@ -874,7 +865,7 @@
         `${minutes.toString().padStart(2,"0")}:${seconds.toString().padStart(2,"0")}`;
 
       const isCritical = remaining <= 10;
-      const flashOn = isCritical && (Math.floor(globalTime * 4) % 2 === 0); // 4 flashes/sec
+      const flashOn = isCritical && (Math.floor(globalTime * 4) % 2 === 0);
 
       ctx.font = "28px monospace";
       ctx.textAlign = "center";
@@ -889,7 +880,7 @@
       ctx.fillText(timeStr, timerX, centerY + 4);
     }
 
-    // =============== RENDER ===============
+    // ===== RENDER =====
     function render() {
       const w = canvas.width;
       const h = canvas.height;
@@ -897,7 +888,7 @@
 
       ctx.clearRect(0, 0, w, h);
 
-      // Full-screen image states
+      // full-screen screens
       if (gameState === "title") {
         drawFullScreenImage(screens.title);
         return;
@@ -919,7 +910,7 @@
         return;
       }
 
-      // playing
+      // playing view
       const ceilingGrad = ctx.createLinearGradient(0, 0, 0, halfH);
       ceilingGrad.addColorStop(0, "#101015");
       ceilingGrad.addColorStop(1, "#181820");
@@ -1009,11 +1000,9 @@
       for (const enemy of enemies) {
         const ex = offsetX + (enemy.x / TILE_SIZE) * miniScale;
         const ey = offsetY + (enemy.y / TILE_SIZE) * miniScale;
-        if (enemy.state === "dead" || enemy.state === "dying" || enemy.state === "finalHit") {
-          ctx.fillStyle = "#aa0000";
-        } else {
-          ctx.fillStyle = "#ff4444";
-        }
+        ctx.fillStyle =
+          (enemy.state === "dead" || enemy.state === "dying" || enemy.state === "finalHit")
+            ? "#aa0000" : "#ff4444";
         ctx.fillRect(ex - 2, ey - 2, 4, 4);
       }
 
@@ -1031,32 +1020,24 @@
       );
       ctx.stroke();
 
-      // punch overlay (under HUD, reaches further into play area)
+      // punch overlay (under HUD)
       const frame = getPunchFrame();
       if (frame) {
         const hudHeight = 90;
         const hudTop = h - hudHeight;
-        const scale = 2.4;                 // slightly bigger punch
+        const scale = 2.2;
         const imgW = frame.width * scale;
         const imgH = frame.height * scale;
-
-        // centered, but slightly to the right like classic Doom
-        const x = canvas.width / 2 - imgW / 2 + 40;
-
-        // start higher so more of the arm is visible above the HUD
-        let y = hudTop - imgH - 10;        // push further up past HUD
-
-        // gentle clamp so it doesn't go too high
-        const minY = halfH - 40;           // allow well above mid, but not crazy
-        if (y < minY) y = minY;
-
+        const x = canvas.width / 2 - imgW / 2 + 60;
+        let y = hudTop - imgH + 35;
+        if (y < halfH) y = halfH;
         ctx.drawImage(frame, x, y, imgW, imgH);
       }
 
       renderHUD();
     }
 
-    // =============== MAIN LOOP ===============
+    // ===== MAIN LOOP =====
     let lastTime = performance.now();
     function loop(now) {
       const dt = (now - lastTime) / 1000;
@@ -1067,6 +1048,7 @@
       requestAnimationFrame(loop);
     }
 
+    updateStatusText();
     requestAnimationFrame(loop);
   </script>
 </body>
