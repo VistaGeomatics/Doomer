@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Warehouse Run – Stolen GPS Hunt</title>
+  <title>Warehouse Run – Stolen Property Hunt</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     * { box-sizing: border-box; }
@@ -11,13 +11,13 @@
       margin: 0;
       background: #000;
       color: #eee;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont,
-        "Segoe UI", sans-serif;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: flex-start;
       min-height: 100vh;
+      touch-action: none; /* helps reduce scroll/pinch conflicts */
     }
 
     #game-container { margin-top: 10px; }
@@ -27,6 +27,7 @@
       background: #000;
       display: block;
       max-width: 100%;
+      touch-action: none;
     }
 
     #title {
@@ -43,6 +44,7 @@
       margin-top: 8px;
       font-size: 14px;
       color: #bbb;
+      padding-bottom: 120px; /* room for mobile controls */
     }
 
     #controls {
@@ -55,69 +57,173 @@
       color: #aaa;
       margin-top: 4px;
     }
+
+    /* ---------------- MOBILE CONTROLS ---------------- */
+    #touch-controls {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 120px;
+      display: none; /* enabled via JS if touch device */
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px;
+      z-index: 50;
+      pointer-events: none; /* buttons will re-enable pointer events */
+      background: linear-gradient(to top, rgba(0,0,0,0.65), rgba(0,0,0,0));
+    }
+
+    .pad {
+      display: grid;
+      grid-template-columns: 56px 56px 56px;
+      grid-template-rows: 56px 56px;
+      gap: 10px;
+      pointer-events: auto;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    .btn {
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+      border: 2px solid rgba(255,255,255,0.15);
+      background: rgba(30,30,35,0.85);
+      color: rgba(255,255,255,0.85);
+      font-weight: 800;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.45);
+      touch-action: none;
+    }
+
+    .btn:active,
+    .btn.active {
+      transform: translateY(1px);
+      background: rgba(60,60,70,0.95);
+      border-color: rgba(255,255,255,0.28);
+    }
+
+    .punch-wrap {
+      pointer-events: auto;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .punch {
+      width: 104px;
+      height: 104px;
+      border-radius: 26px;
+      border: 2px solid rgba(255,255,255,0.18);
+      background: rgba(120,25,25,0.85);
+      color: rgba(255,255,255,0.92);
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.55);
+      touch-action: none;
+    }
+
+    .punch:active {
+      transform: translateY(1px);
+      background: rgba(170,30,30,0.95);
+    }
   </style>
 </head>
 <body>
-  <div id="title">WAREHOUSE RUN – STOLEN GPS HUNT</div>
+  <div id="title">WAREHOUSE RUN – STOLEN PROPERTY HUNT</div>
+
   <div id="game-container">
     <canvas id="game"></canvas>
   </div>
+
   <div id="hud">
     <div id="controls">
-      W / S – Move &nbsp; | &nbsp; A / D or ← / → – Turn &nbsp; | &nbsp; Space – Punch &nbsp; | &nbsp; C – Continue (if available)
+      W / S – Move &nbsp; | &nbsp; A / D or ← / → – Turn &nbsp; | &nbsp; Space – Punch
     </div>
     <div id="objective">
-      Objective: Recover all 5 stolen GPS pieces from the burglars before the timer runs out.
+      Objective: Retrieve all 5 GPS components before time runs out.
     </div>
     <div id="status"></div>
   </div>
 
+  <!-- Touch controls -->
+  <div id="touch-controls" aria-label="Mobile controls">
+    <div class="pad">
+      <div class="btn" id="btn-left"  title="Turn left">⟵</div>
+      <div class="btn" id="btn-up"    title="Forward">▲</div>
+      <div class="btn" id="btn-right" title="Turn right">⟶</div>
+      <div class="btn" id="btn-down"  title="Back">▼</div>
+      <div style="width:56px;height:56px;"></div>
+      <div style="width:56px;height:56px;"></div>
+    </div>
+
+    <div class="punch-wrap">
+      <div class="punch" id="btn-punch" title="Punch">PUNCH</div>
+    </div>
+  </div>
+
   <!-- background music -->
   <audio id="bgm" src="the-metal-loop-full.wav" loop></audio>
-  <!-- punch sound effect -->
-  <audio id="punchSfx" src="Punch.wav"></audio>
 
   <script>
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
     const statusEl = document.getElementById("status");
     const bgm = document.getElementById("bgm");
-    const punchSfx = document.getElementById("punchSfx");
 
     canvas.width = 960;
     canvas.height = 540;
 
-    // ===== MUSIC & SFX =====
+    // ------------ GAME STATE / SCREENS -------------
+    let gameState = "title";
+    let continueUsed = false;
+    const LEVEL_TIME = 80; // 1:20
+    let remainingTime = LEVEL_TIME;
+
+    function loadImage(path) {
+      const img = new Image();
+      img.src = path;
+      return img;
+    }
+
+    const screenImages = {
+      title: loadImage("Level3.png"),
+      prescreen: loadImage("Prescreen.png"),
+      complete: loadImage("level complete.png"),
+      gameover: loadImage("Fail.png"),
+      continue: loadImage("Continue.png")
+    };
+
+    function drawFullScreenImage(img) {
+      const w = canvas.width, h = canvas.height;
+      if (!img || !img.complete || img.width === 0) {
+        ctx.fillStyle = "#000"; ctx.fillRect(0, 0, w, h);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+    }
+
+    // ------------ MUSIC / SFX -------------
+    let bgmStarted = false;
     function startBgm() {
-      if (!bgm) return;
-      try {
-        bgm.volume = 0.45;
-        if (bgm.paused) {
-          const p = bgm.play();
-          if (p && typeof p.catch === "function") {
-            p.catch(() => {});
-          }
-        }
-      } catch (e) {
-        console.warn("BGM error:", e);
-      }
+      if (bgmStarted || !bgm) return;
+      bgm.volume = 0.3;
+      bgm.play().catch(() => {});
+      bgmStarted = true;
     }
 
-    function playPunchSound() {
-      if (!punchSfx) return;
-      try {
-        punchSfx.volume = 1.0;
-        punchSfx.currentTime = 0;
-        const p = punchSfx.play();
-        if (p && typeof p.catch === "function") {
-          p.catch(() => {});
-        }
-      } catch (e) {
-        console.warn("Punch sound error:", e);
-      }
-    }
+    const punchSound = new Audio("Punch.wav");
+    punchSound.volume = 1.0;
 
-    // ===== MAP =====
+    // ------------ MAP -------------
     const asciiMap = [
       "################################",
       "#...............##............#",
@@ -144,65 +250,145 @@
 
     const MAP_HEIGHT = asciiMap.length;
     const MAP_WIDTH  = asciiMap[0].length;
-    const TILE_SIZE = 64;
 
     const map = asciiMap.map(row =>
       row.split("").map(ch => (ch === "." || ch === "P") ? 0 : 1)
     );
 
-    // ===== PLAYER =====
+    const TILE_SIZE = 64;
+
+    // ------------ PLAYER -------------
     let spawnX = 1.5, spawnY = 1.5;
     for (let y = 0; y < MAP_HEIGHT; y++) {
       for (let x = 0; x < MAP_WIDTH; x++) {
-        if (asciiMap[y][x] === "P") {
-          spawnX = x + 0.5;
-          spawnY = y + 0.5;
-        }
+        if (asciiMap[y][x] === "P") { spawnX = x + 0.5; spawnY = y + 0.5; }
       }
     }
 
-    const player = {
-      x: spawnX * TILE_SIZE,
-      y: spawnY * TILE_SIZE,
-      angle: 0
-    };
+    const player = { x: spawnX * TILE_SIZE, y: spawnY * TILE_SIZE, angle: 0 };
 
     const FOV = Math.PI / 3;
     const NUM_RAYS = canvas.width;
     const MAX_DEPTH = 18 * TILE_SIZE;
     const depthBuffer = new Array(NUM_RAYS);
 
-    // ===== GAME STATE =====
-    const TIME_LIMIT = 60; // 1 minute
-    let elapsedTime = 0;
-    let continuesLeft = 1;
-    // "title", "prescreen", "playing", "won", "continue", "gameover"
-    let gameState = "title";
-    let globalTime = 0; // for blinking timer
+    // ------------ INPUT (Keyboard + Touch virtual keys) -------------
+    const keys = {}; // keyboard
+    const vkeys = { left:false, right:false, up:false, down:false, punch:false }; // virtual
 
-    // ===== INPUT =====
-    const keys = {};
     window.addEventListener("keydown", e => {
       startBgm();
-
       if (!keys[e.code]) {
-        if ((e.code === "Space" || e.code === "Enter") && gameState === "title") {
-          gameState = "prescreen";
-          updateStatusText();
-        } else if ((e.code === "Space" || e.code === "Enter") && gameState === "prescreen") {
-          resetRun();
-        } else if (e.code === "Space" && gameState === "playing" && !punchState.active) {
-          startPunch();
-        } else if (e.code === "KeyC" && gameState === "continue" && continuesLeft > 0) {
-          useContinue();
-        }
+        if (e.code === "Space") handlePrimaryAction();
       }
-
       keys[e.code] = true;
     });
-
     window.addEventListener("keyup", e => { keys[e.code] = false; });
-    window.addEventListener("mousedown", startBgm);
+
+    // Primary action for screens
+    function handlePrimaryAction() {
+      if (gameState === "running" && !punchState.active) {
+        startPunch();
+        return;
+      }
+      if (gameState === "title") { gameState = "prescreen"; return; }
+      if (gameState === "prescreen") { startLevel(); return; }
+      if (gameState === "continuePrompt") {
+        if (!continueUsed) { continueUsed = true; startLevel(); }
+        return;
+      }
+      if (gameState === "levelComplete" || gameState === "gameOver") {
+        resetGameCompletely();
+      }
+    }
+
+    // enable touch controls on touch devices
+    const touchControlsEl = document.getElementById("touch-controls");
+    const isTouch = ("ontouchstart" in window) || (navigator.maxTouchPoints > 0);
+    if (isTouch) touchControlsEl.style.display = "flex";
+
+    // helper to bind press/hold buttons with multi-touch support
+    function bindHoldButton(el, onDown, onUp) {
+      const pointers = new Set();
+
+      const down = (ev) => {
+        startBgm();
+        ev.preventDefault();
+        pointers.add(ev.pointerId ?? "mouse");
+        el.classList.add("active");
+        onDown();
+      };
+
+      const up = (ev) => {
+        ev.preventDefault();
+        pointers.delete(ev.pointerId ?? "mouse");
+        if (pointers.size === 0) el.classList.remove("active");
+        onUp();
+      };
+
+      el.addEventListener("pointerdown", down, { passive:false });
+      el.addEventListener("pointerup", up, { passive:false });
+      el.addEventListener("pointercancel", up, { passive:false });
+      el.addEventListener("pointerleave", up, { passive:false });
+    }
+
+    // Map buttons to vkeys
+    bindHoldButton(document.getElementById("btn-left"),
+      () => vkeys.left = true,
+      () => vkeys.left = false
+    );
+
+    bindHoldButton(document.getElementById("btn-right"),
+      () => vkeys.right = true,
+      () => vkeys.right = false
+    );
+
+    bindHoldButton(document.getElementById("btn-up"),
+      () => vkeys.up = true,
+      () => vkeys.up = false
+    );
+
+    bindHoldButton(document.getElementById("btn-down"),
+      () => vkeys.down = true,
+      () => vkeys.down = false
+    );
+
+    // Punch should trigger once per press (not continuous)
+    (function bindPunchOnce(){
+      const el = document.getElementById("btn-punch");
+      let pressed = false;
+
+      el.addEventListener("pointerdown", (ev) => {
+        startBgm();
+        ev.preventDefault();
+        if (pressed) return;
+        pressed = true;
+        el.classList.add("active");
+
+        if (gameState === "running") {
+          if (!punchState.active) startPunch();
+        } else {
+          handlePrimaryAction();
+        }
+      }, { passive:false });
+
+      const release = (ev) => {
+        ev.preventDefault();
+        pressed = false;
+        el.classList.remove("active");
+      };
+
+      el.addEventListener("pointerup", release, { passive:false });
+      el.addEventListener("pointercancel", release, { passive:false });
+      el.addEventListener("pointerleave", release, { passive:false });
+    })();
+
+    // Tap canvas to advance screens / punch
+    canvas.addEventListener("pointerdown", (e) => {
+      startBgm();
+      e.preventDefault();
+      handlePrimaryAction();
+    }, { passive:false });
 
     function tileAt(tx, ty) {
       if (tx < 0 || tx >= MAP_WIDTH || ty < 0 || ty >= MAP_HEIGHT) return 1;
@@ -215,25 +401,18 @@
       return tileAt(tx, ty) !== 0;
     }
 
-    // ===== ENEMIES =====
-    const enemyBasePositions = [
+    // ------------ ENEMIES / GPS THIEVES -------------
+    const enemies = [
       { x: (6.5)  * TILE_SIZE, y: (3.5)  * TILE_SIZE },
       { x: (22.5) * TILE_SIZE, y: (3.5)  * TILE_SIZE },
       { x: (6.5)  * TILE_SIZE, y: (13.5) * TILE_SIZE },
       { x: (22.5) * TILE_SIZE, y: (13.5) * TILE_SIZE },
       { x: (15.5) * TILE_SIZE, y: (9.5)  * TILE_SIZE }
-    ];
-
-    const ENEMY_SPEED = 55;
-    const ENEMY_AVOID_RADIUS = 4 * TILE_SIZE;
-    const ENEMY_ANIM_FRAME_TIME = 0.16;
-
-    const enemies = enemyBasePositions.map(p => ({
-      x: p.x,
-      y: p.y,
+    ].map(e => ({
+      ...e,
       alive: true,
       health: 3,
-      state: "alive",      // "alive" | "finalHit" | "dying" | "dead"
+      state: "alive",
       deathTimer: 0,
       finalHitTimer: 0,
       dir: Math.random() * Math.PI * 2,
@@ -246,77 +425,76 @@
       hitTimer: 0
     }));
 
+    const ENEMY_SPEED = 55;
+    const ENEMY_AVOID_RADIUS = 4 * TILE_SIZE;
+    const ENEMY_ANIM_FRAME_TIME = 0.16;
+
     let itemsCollected = 0;
     const totalItems = enemies.length;
 
     function updateStatusText() {
-      if (gameState === "won") {
-        statusEl.textContent = "GPS recovered! All 5 pieces secured.";
-      } else if (gameState === "continue") {
-        statusEl.textContent =
-          `Time's up! Press C to continue (${continuesLeft} left).`;
-      } else if (gameState === "gameover") {
-        statusEl.textContent =
-          "Game Over – no continues left. Refresh to try again.";
-      } else if (gameState === "playing") {
-        statusEl.textContent =
-          `GPS pieces recovered: ${itemsCollected} / ${totalItems}  |  Continues: ${continuesLeft}`;
+      if (itemsCollected >= totalItems) {
+        statusEl.textContent = "All GPS components recovered!";
       } else {
-        statusEl.textContent = "";
+        statusEl.textContent = `GPS components recovered: ${itemsCollected} / ${totalItems}`;
+      }
+    }
+    updateStatusText();
+
+    function resetEnemies() {
+      const positions = [
+        { x: (6.5)  * TILE_SIZE, y: (3.5)  * TILE_SIZE },
+        { x: (22.5) * TILE_SIZE, y: (3.5)  * TILE_SIZE },
+        { x: (6.5)  * TILE_SIZE, y: (13.5) * TILE_SIZE },
+        { x: (22.5) * TILE_SIZE, y: (13.5) * TILE_SIZE },
+        { x: (15.5) * TILE_SIZE, y: (9.5)  * TILE_SIZE }
+      ];
+      for (let i = 0; i < enemies.length; i++) {
+        const e = enemies[i], p = positions[i];
+        e.x = p.x; e.y = p.y;
+        e.alive = true; e.health = 3; e.state = "alive";
+        e.deathTimer = 0; e.finalHitTimer = 0;
+        e.dir = Math.random() * Math.PI * 2;
+        e.turnTimer = 1 + Math.random() * 2;
+        e.animTime = 0; e.animFrame = 0;
+        e.moving = false; e.movingAway = false;
+        e.prevDistToPlayer = 0; e.hitTimer = 0;
       }
     }
 
-    function resetRun() {
+    function startLevel() {
+      gameState = "running";
+      remainingTime = LEVEL_TIME;
       player.x = spawnX * TILE_SIZE;
       player.y = spawnY * TILE_SIZE;
       player.angle = 0;
-
-      for (let i = 0; i < enemies.length; i++) {
-        const base = enemyBasePositions[i];
-        const e = enemies[i];
-        e.x = base.x;
-        e.y = base.y;
-        e.alive = true;
-        e.health = 3;
-        e.state = "alive";
-        e.deathTimer = 0;
-        e.finalHitTimer = 0;
-        e.dir = Math.random() * Math.PI * 2;
-        e.turnTimer = 1 + Math.random() * 2;
-        e.animTime = 0;
-        e.animFrame = 0;
-        e.moving = false;
-        e.movingAway = false;
-        e.prevDistToPlayer = 0;
-        e.hitTimer = 0;
-      }
-
+      resetEnemies();
       itemsCollected = 0;
-      elapsedTime = 0;
-      gameState = "playing";
       updateStatusText();
     }
 
-    function useContinue() {
-      continuesLeft--;
-      resetRun();
+    function resetGameCompletely() {
+      continueUsed = false;
+      itemsCollected = 0;
+      remainingTime = LEVEL_TIME;
+      resetEnemies();
+      player.x = spawnX * TILE_SIZE;
+      player.y = spawnY * TILE_SIZE;
+      player.angle = 0;
+      gameState = "title";
+      updateStatusText();
     }
 
     function updateEnemies(dt) {
       for (const e of enemies) {
         if (e.state === "finalHit") {
           e.finalHitTimer -= dt;
-          if (e.finalHitTimer <= 0) {
-            e.state = "dying";
-            e.deathTimer = 0.6;
-          }
+          if (e.finalHitTimer <= 0) { e.state = "dying"; e.deathTimer = 0.6; }
           continue;
         }
         if (e.state === "dying") {
           e.deathTimer -= dt;
-          if (e.deathTimer <= 0) {
-            e.state = "dead";
-          }
+          if (e.deathTimer <= 0) e.state = "dead";
           continue;
         }
         if (e.state === "dead") continue;
@@ -326,14 +504,14 @@
           if (e.hitTimer < 0) e.hitTimer = 0;
         }
 
-        const dxToPlayer0 = player.x - e.x;
-        const dyToPlayer0 = player.y - e.y;
-        const distToPlayer0 = Math.hypot(dxToPlayer0, dyToPlayer0);
-        e.prevDistToPlayer = distToPlayer0;
+        const dx0 = player.x - e.x;
+        const dy0 = player.y - e.y;
+        const d0 = Math.hypot(dx0, dy0);
+        e.prevDistToPlayer = d0;
 
-        if (distToPlayer0 < ENEMY_AVOID_RADIUS) {
-          const angleToPlayer = Math.atan2(dyToPlayer0, dxToPlayer0);
-          e.dir = angleToPlayer + Math.PI + (Math.random() - 0.5) * 0.4;
+        if (d0 < ENEMY_AVOID_RADIUS) {
+          const a = Math.atan2(dy0, dx0);
+          e.dir = a + Math.PI + (Math.random() - 0.5) * 0.4;
           e.turnTimer = 0.3;
         } else {
           e.turnTimer -= dt;
@@ -346,32 +524,20 @@
         const dx = Math.cos(e.dir) * ENEMY_SPEED * dt;
         const dy = Math.sin(e.dir) * ENEMY_SPEED * dt;
 
-        const oldX = e.x;
-        const oldY = e.y;
+        const oldX = e.x, oldY = e.y;
 
-        let newX = e.x + dx;
-        let newY = e.y + dy;
+        const nx = e.x + dx;
+        const ny = e.y + dy;
 
-        if (!isSolid(newX, e.y)) {
-          e.x = newX;
-        } else {
-          e.dir = Math.random() * Math.PI * 2;
-        }
+        if (!isSolid(nx, e.y)) e.x = nx; else e.dir = Math.random() * Math.PI * 2;
+        if (!isSolid(e.x, ny)) e.y = ny; else e.dir = Math.random() * Math.PI * 2;
 
-        if (!isSolid(e.x, newY)) {
-          e.y = newY;
-        } else {
-          e.dir = Math.random() * Math.PI * 2;
-        }
+        e.moving = Math.hypot(e.x - oldX, e.y - oldY) > 0.5;
 
-        const movedDist = Math.hypot(e.x - oldX, e.y - oldY);
-        e.moving = movedDist > 0.5;
-
-        const dxToPlayer1 = player.x - e.x;
-        const dyToPlayer1 = player.y - e.y;
-        const distToPlayer1 = Math.hypot(dxToPlayer1, dyToPlayer1);
-
-        e.movingAway = distToPlayer1 > e.prevDistToPlayer + 1;
+        const dx1 = player.x - e.x;
+        const dy1 = player.y - e.y;
+        const d1 = Math.hypot(dx1, dy1);
+        e.movingAway = d1 > e.prevDistToPlayer + 1;
 
         if (e.moving) {
           e.animTime += dt;
@@ -386,20 +552,14 @@
       }
     }
 
-    // ===== PUNCH =====
-    const punchState = {
-      active: false,
-      time: 0,
-      duration: 0.25,
-      justHit: false
-    };
-
+    // ------------ PUNCH -------------
+    const punchState = { active:false, time:0, duration:0.25, justHit:false };
     const PUNCH_RANGE = 1.5 * TILE_SIZE;
     const PUNCH_ARC   = Math.PI / 4;
 
     function normalizeAngle(a) {
-      while (a < -Math.PI) a += 2 * Math.PI;
-      while (a >  Math.PI) a -= 2 * Math.PI;
+      while (a < -Math.PI) a += 2*Math.PI;
+      while (a >  Math.PI) a -= 2*Math.PI;
       return a;
     }
 
@@ -407,7 +567,9 @@
       punchState.active = true;
       punchState.time = 0;
       punchState.justHit = false;
-      playPunchSound();
+
+      try { punchSound.currentTime = 0; punchSound.play().catch(() => {}); } catch {}
+
       performPunch();
     }
 
@@ -435,28 +597,19 @@
           enemy.finalHitTimer = 0.2;
           enemy.hitTimer = 0;
           itemsCollected++;
-          if (itemsCollected >= totalItems && gameState === "playing") {
-            gameState = "won";
-            updateStatusText();
-          }
         }
-
         hitAny = true;
       }
       punchState.justHit = hitAny;
-      if (gameState === "playing") {
-        updateStatusText();
-      }
+      if (hitAny) updateStatusText();
     }
 
-    // ===== PUNCH SPRITES =====
     const punchImages = [];
     let punchImagesLoaded = 0;
-    ["Punch1.png", "punch2.png", "Punch3.png"].forEach((file, idx) => {
+    ["punch1.png", "punch2.png", "punch3.png"].forEach((file, idx) => {
       const img = new Image();
       img.src = file;
       img.onload = () => { punchImagesLoaded++; };
-      img.onerror = () => console.warn("Failed to load", file);
       punchImages[idx] = img;
     });
 
@@ -466,86 +619,52 @@
       let frameIndex = 0;
       if (t > 0.4 && t <= 0.8) frameIndex = 1;
       else if (t > 0.8) frameIndex = 2;
-
-      const img = punchImages[frameIndex];
-      if (!img || !img.complete || img.naturalWidth === 0 || img.naturalHeight === 0) {
-        return null;
-      }
-      return img;
+      return punchImages[frameIndex];
     }
 
-    // ===== TEXTURES =====
-    const floorCanvas = document.createElement("canvas");
-    floorCanvas.width = 96;
-    floorCanvas.height = 96;
-    const floorCtx = floorCanvas.getContext("2d");
+    // ------------ TEXTURES -------------
+    function makeScaledPattern(img, scale) {
+      const p = ctx.createPattern(img, "repeat");
+      if (p && p.setTransform) {
+        const m = new DOMMatrix();
+        m.a = scale; m.d = scale;
+        p.setTransform(m);
+      }
+      return p;
+    }
 
-    let floorTextureReady = false;
     let floorPattern = null;
-
     const floorImg = new Image();
     floorImg.src = "floor 69.jpg";
-    floorImg.onload = () => {
-      floorCtx.clearRect(0, 0, floorCanvas.width, floorCanvas.height);
-      floorCtx.drawImage(floorImg, 0, 0, floorCanvas.width, floorCanvas.height);
-      floorPattern = ctx.createPattern(floorCanvas, "repeat");
-      floorTextureReady = !!floorPattern;
-    };
-    floorImg.onerror = () => console.warn("Failed to load floor 69.jpg");
+    floorImg.onload = () => { floorPattern = makeScaledPattern(floorImg, 0.9); };
 
     const wallTextureFiles = ["Wall1.png", "Wall2.png", "wall3.png"];
     const wallTextures = [];
     wallTextureFiles.forEach((file, idx) => {
       const img = new Image();
       img.src = file;
-      img.onerror = () => console.warn("Failed to load", file);
       wallTextures[idx] = img;
     });
 
-    const WALL_TEX_SCALE = 2.5;
-
-    // ===== BURGLAR SPRITES =====
-    const burglarSprites = {
-      standing: null,
-      walk1: null,
-      walk2: null,
-      away: null,
-      hit: null,
-      falling: null,
-      dead: null
-    };
+    // ------------ BURGLAR SPRITES -------------
+    const burglarSprites = { standing:null, walk1:null, walk2:null, away:null, hit:null, falling:null, dead:null };
 
     function loadBurglarSprite(name, file) {
       const img = new Image();
       img.src = file;
       img.onload = () => { burglarSprites[name] = img; };
-      img.onerror = () => console.warn("Failed to load", file);
-    }
-
-    loadBurglarSprite("standing", "BGStanding.png");
-    loadBurglarSprite("walk1", "BGWalking1.png");
-    loadBurglarSprite("walk2", "BGwalking2.png");
-    loadBurglarSprite("away",  "BGWalkingaway.png");
-    loadBurglarSprite("hit",   "BGpunch.png");
-    loadBurglarSprite("falling", "Falling1.png");
-    loadBurglarSprite("dead",    "Dead.png");
-
-    // ===== HUD & SCREENS =====
-    function loadImage(path, onload) {
-      const img = new Image();
-      img.src = path;
-      img.onload = () => onload && onload(img);
-      img.onerror = () => console.warn("Failed to load", path);
       return img;
     }
+    loadBurglarSprite("standing","BGStanding.png");
+    loadBurglarSprite("walk1","BGWalking1.png");
+    loadBurglarSprite("walk2","BGwalking2.png");
+    loadBurglarSprite("away","BGWalkingaway.png");
+    loadBurglarSprite("hit","BGpunch.png");
+    loadBurglarSprite("falling","Falling1.png");
+    loadBurglarSprite("dead","Dead.png");
 
-    const hud = {
-      bar: null,
-      items: [],
-      happyFace: null,
-      angryFace: null
-    };
-
+    // ------------ HUD -------------
+    const hud = { bar:null, items:[], happyFace:null, angryFace:null };
     hud.bar = loadImage("Bar.png");
     hud.items[0] = loadImage("BRX72.png");
     hud.items[1] = loadImage("Data collector copy.png");
@@ -555,62 +674,177 @@
     hud.happyFace = loadImage("Happy Face.png");
     hud.angryFace = loadImage("Angry face.png");
 
-    const screens = {
-      title: loadImage("Level3.png"),
-      prescreen: loadImage("Prescreen.png"),
-      win: loadImage("level complete.png"),
-      gameOver: loadImage("Fail.png"),
-      cont: loadImage("Continue.png")
-    };
+    // ------------ RAYCAST -------------
+    function castRay(rayAngle) {
+      rayAngle = (rayAngle + Math.PI*2) % (Math.PI*2);
+      const sin = Math.sin(rayAngle), cos = Math.cos(rayAngle);
 
-    function drawFullScreenImage(img) {
-      const w = canvas.width;
-      const h = canvas.height;
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, w, h);
-      if (!img || !img.complete || img.naturalWidth === 0 || img.naturalHeight === 0) return;
+      const stepSize = 4;
+      let rayX = player.x, rayY = player.y, distance = 0;
+      let hitTile = 0, hitMapX = 0, hitMapY = 0;
 
-      const imgRatio = img.width / img.height;
-      const canvasRatio = w / h;
-      let drawW, drawH;
+      while (distance < MAX_DEPTH) {
+        rayX += cos * stepSize;
+        rayY += sin * stepSize;
+        distance += stepSize;
 
-      // contain scale
-      if (imgRatio > canvasRatio) {
-        drawW = w;
-        drawH = w / imgRatio;
-      } else {
-        drawH = h;
-        drawW = h * imgRatio;
+        const tx = Math.floor(rayX / TILE_SIZE);
+        const ty = Math.floor(rayY / TILE_SIZE);
+
+        if (tx < 0 || tx >= MAP_WIDTH || ty < 0 || ty >= MAP_HEIGHT) {
+          hitTile = 1; hitMapX = tx; hitMapY = ty; break;
+        }
+
+        const t = tileAt(tx, ty);
+        if (t !== 0) { hitTile = t; hitMapX = tx; hitMapY = ty; break; }
       }
 
-      const dx = (w - drawW) / 2;
-      const dy = (h - drawH) / 2;
-      ctx.drawImage(img, dx, dy, drawW, drawH);
+      return { distance, tile: hitTile, hitMapX, hitMapY, worldX: rayX, worldY: rayY };
     }
 
-    // ===== UPDATE =====
-    function update(dt) {
-      // punch animation always ticks
-      if (punchState.active) {
-        punchState.time += dt;
-        if (punchState.time >= punchState.duration) {
-          punchState.active = false;
-          punchState.time = 0;
-          punchState.justHit = false;
+    // ------------ ENEMY RENDER -------------
+    function getVisibleEnemies() {
+      const result = [];
+      for (const enemy of enemies) {
+        const dx = enemy.x - player.x, dy = enemy.y - player.y;
+        const dist = Math.hypot(dx, dy);
+        const angleTo = Math.atan2(dy, dx);
+        const diff = normalizeAngle(angleTo - player.angle);
+        if (Math.abs(diff) > FOV/2) continue;
+        result.push({ enemy, dist, diff });
+      }
+      result.sort((a,b) => b.dist - a.dist);
+      return result;
+    }
+
+    function chooseBurglarFrame(enemy) {
+      if (enemy.state === "finalHit" && burglarSprites.hit) return burglarSprites.hit;
+      if (enemy.state === "dying" && burglarSprites.falling) return burglarSprites.falling;
+      if (enemy.state === "dead" && burglarSprites.dead) return burglarSprites.dead;
+      if (enemy.hitTimer > 0 && burglarSprites.hit) return burglarSprites.hit;
+      if (!burglarSprites.standing) return null;
+      if (!enemy.moving) return burglarSprites.standing;
+      if (enemy.movingAway && burglarSprites.away) return burglarSprites.away;
+      if (enemy.animFrame === 0 && burglarSprites.walk1) return burglarSprites.walk1;
+      if (enemy.animFrame === 1 && burglarSprites.walk2) return burglarSprites.walk2;
+      return burglarSprites.standing;
+    }
+
+    function renderEnemies(halfH) {
+      const visible = getVisibleEnemies();
+      const w = canvas.width;
+
+      for (const obj of visible) {
+        const { enemy, dist, diff } = obj;
+        const screenX = (0.5 + (diff / FOV)) * w;
+        const sprite = chooseBurglarFrame(enemy);
+        if (!sprite) continue;
+
+        const spriteHeight = (TILE_SIZE / dist) * 360;
+        const spriteWidth  = spriteHeight * (sprite.width / sprite.height);
+        const spriteY = halfH - spriteHeight/2 + spriteHeight*0.15;
+        const spriteX = screenX - spriteWidth/2;
+
+        const leftCol  = Math.max(0, Math.floor(spriteX));
+        const rightCol = Math.min(NUM_RAYS - 1, Math.floor(spriteX + spriteWidth));
+        let blocked = true;
+        const correctedEnemyDist = dist * Math.cos(diff);
+        for (let col = leftCol; col <= rightCol; col++) {
+          if (depthBuffer[col] > correctedEnemyDist) { blocked = false; break; }
+        }
+        if (blocked) continue;
+
+        ctx.drawImage(sprite, spriteX, spriteY, spriteWidth, spriteHeight);
+      }
+    }
+
+    // ------------ HUD DRAW -------------
+    function renderHUD() {
+      const w = canvas.width, h = canvas.height;
+      const hudHeight = 90;
+      const hudTop = h - hudHeight;
+
+      if (hud.bar && hud.bar.complete && hud.bar.width > 0) {
+        ctx.drawImage(hud.bar, 0, hudTop, w, hudHeight);
+      } else {
+        ctx.fillStyle = "#222";
+        ctx.fillRect(0, hudTop, w, hudHeight);
+      }
+
+      const columns = 7;
+      const colW = w / columns;
+      const centerY = hudTop + hudHeight / 2;
+
+      const itemScales = [0.5, 0.5, 0.38, 0.38, 0.45];
+      const itemSlotIndices = [0, 1, 2, 4, 5];
+
+      for (let i = 0; i < 5; i++) {
+        if (itemsCollected > i && hud.items[i] && hud.items[i].complete) {
+          const img = hud.items[i];
+          const scale = itemScales[i];
+          const iw = img.width * scale, ih = img.height * scale;
+          const slotIndex = itemSlotIndices[i];
+          const cx = colW * (slotIndex + 0.5);
+          ctx.drawImage(img, cx - iw/2, centerY - ih/2, iw, ih);
         }
       }
 
-      if (gameState !== "playing") return;
+      let faceImg = null;
+      if (punchState.active && punchState.time < punchState.duration * 0.5 &&
+          hud.angryFace && hud.angryFace.complete) {
+        faceImg = hud.angryFace;
+      } else if (hud.happyFace && hud.happyFace.complete) {
+        faceImg = hud.happyFace;
+      }
+      if (faceImg) {
+        const scale = 0.07;
+        const iw = faceImg.width * scale, ih = faceImg.height * scale;
+        const cx = colW * (3 + 0.5);
+        ctx.drawImage(faceImg, cx - iw/2, centerY - ih/2, iw, ih);
+      }
+
+      const timerX = colW * (6 + 0.5);
+      const totalSeconds = Math.max(0, Math.floor(remainingTime));
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      const timeStr = `${minutes.toString().padStart(2,"0")}:${seconds.toString().padStart(2,"0")}`;
+
+      ctx.font = "28px monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#ff3333";
+      ctx.fillText(timeStr, timerX, centerY + 4);
+    }
+
+    // ------------ GAME UPDATE -------------
+    function update(dt) {
+      if (gameState !== "running") {
+        if (punchState.active) {
+          punchState.time += dt;
+          if (punchState.time >= punchState.duration) {
+            punchState.active = false;
+            punchState.time = 0;
+            punchState.justHit = false;
+          }
+        }
+        return;
+      }
 
       const moveSpeed = 170;
       const rotSpeed  = 2.8;
 
-      if (keys["ArrowLeft"] || keys["KeyA"])  player.angle -= rotSpeed * dt;
-      if (keys["ArrowRight"]|| keys["KeyD"])  player.angle += rotSpeed * dt;
+      const turnLeft  = keys["ArrowLeft"] || keys["KeyA"] || vkeys.left;
+      const turnRight = keys["ArrowRight"]|| keys["KeyD"] || vkeys.right;
+
+      if (turnLeft)  player.angle -= rotSpeed * dt;
+      if (turnRight) player.angle += rotSpeed * dt;
 
       let dir = 0;
-      if (keys["ArrowUp"] || keys["KeyW"])   dir += 1;
-      if (keys["ArrowDown"] || keys["KeyS"]) dir -= 1;
+      const forward = keys["ArrowUp"] || keys["KeyW"] || vkeys.up;
+      const back    = keys["ArrowDown"] || keys["KeyS"] || vkeys.down;
+
+      if (forward) dir += 1;
+      if (back)    dir -= 1;
 
       const dx = Math.cos(player.angle) * moveSpeed * dir * dt;
       const dy = Math.sin(player.angle) * moveSpeed * dir * dt;
@@ -621,303 +855,51 @@
       if (!isSolid(newX, player.y)) player.x = newX;
       if (!isSolid(player.x, newY)) player.y = newY;
 
+      if (punchState.active) {
+        punchState.time += dt;
+        if (punchState.time >= punchState.duration) {
+          punchState.active = false;
+          punchState.time = 0;
+          punchState.justHit = false;
+        }
+      }
+
       updateEnemies(dt);
 
-      elapsedTime += dt;
-
-      if (elapsedTime >= TIME_LIMIT && itemsCollected < totalItems && gameState === "playing") {
-        if (continuesLeft > 0) {
-          gameState = "continue";
+      remainingTime -= dt;
+      if (remainingTime <= 0 && gameState === "running") {
+        remainingTime = 0;
+        if (itemsCollected >= totalItems) {
+          gameState = "levelComplete";
+        } else if (!continueUsed) {
+          gameState = "continuePrompt";
         } else {
-          gameState = "gameover";
-        }
-        updateStatusText();
-      }
-    }
-
-    // ===== RAYCAST =====
-    function castRay(rayAngle) {
-      rayAngle = (rayAngle + Math.PI * 2) % (Math.PI * 2);
-      const sin = Math.sin(rayAngle);
-      const cos = Math.cos(rayAngle);
-
-      const stepSize = 4;
-      let rayX = player.x;
-      let rayY = player.y;
-      let distance = 0;
-      let hitWall  = false;
-      let hitTile  = 0;
-      let hitMapX = 0;
-      let hitMapY = 0;
-
-      while (!hitWall && distance < MAX_DEPTH) {
-        rayX += cos * stepSize;
-        rayY += sin * stepSize;
-        distance += stepSize;
-
-        const tx = Math.floor(rayX / TILE_SIZE);
-        const ty = Math.floor(rayY / TILE_SIZE);
-
-        if (tx < 0 || tx >= MAP_WIDTH || ty < 0 || ty >= MAP_HEIGHT) {
-          hitWall = true;
-          hitTile = 1;
-          hitMapX = tx;
-          hitMapY = ty;
-          break;
-        }
-
-        const t = tileAt(tx, ty);
-        if (t !== 0) {
-          hitWall = true;
-          hitTile = t;
-          hitMapX = tx;
-          hitMapY = ty;
+          gameState = "gameOver";
         }
       }
 
-      return {
-        distance,
-        tile: hitTile,
-        hitMapX,
-        hitMapY,
-        worldX: rayX,
-        worldY: rayY
-      };
-    }
-
-    // ===== ENEMY RENDERING =====
-    function getVisibleEnemies() {
-      const result = [];
-      for (const enemy of enemies) {
-        const dx = enemy.x - player.x;
-        const dy = enemy.y - player.y;
-        const dist = Math.hypot(dx, dy);
-        const angleTo = Math.atan2(dy, dx);
-        const diff = normalizeAngle(angleTo - player.angle);
-        if (Math.abs(diff) > FOV / 2) continue;
-        result.push({ enemy, dist, diff });
-      }
-      result.sort((a, b) => b.dist - a.dist);
-      return result;
-    }
-
-    function chooseBurglarFrame(enemy) {
-      if (enemy.state === "finalHit" && burglarSprites.hit) return burglarSprites.hit;
-      if (enemy.state === "dying" && burglarSprites.falling) return burglarSprites.falling;
-      if (enemy.state === "dead" && burglarSprites.dead) return burglarSprites.dead;
-
-      if (enemy.hitTimer > 0 && burglarSprites.hit) return burglarSprites.hit;
-
-      if (!burglarSprites.standing) return null;
-      if (!enemy.moving) return burglarSprites.standing;
-
-      if (enemy.movingAway && burglarSprites.away) {
-        return burglarSprites.away;
-      }
-
-      if (enemy.animFrame === 0 && burglarSprites.walk1) return burglarSprites.walk1;
-      if (enemy.animFrame === 1 && burglarSprites.walk2) return burglarSprites.walk2;
-
-      return burglarSprites.standing;
-    }
-
-    function renderEnemies() {
-      const visible = getVisibleEnemies();
-      const w = canvas.width;
-      const h = canvas.height;
-      const halfH = h / 2;
-
-      for (const obj of visible) {
-        const { enemy, dist, diff } = obj;
-        const screenX = (0.5 + (diff / FOV)) * w;
-        const sprite = chooseBurglarFrame(enemy);
-        if (!sprite || !sprite.complete || sprite.naturalWidth === 0 || sprite.naturalHeight === 0) continue;
-
-        const spriteHeight = (TILE_SIZE / dist) * 360;
-        const spriteWidth  = spriteHeight * (sprite.width / sprite.height);
-        const spriteY = halfH - spriteHeight / 2 + spriteHeight * 0.15;
-        const spriteX = screenX - spriteWidth / 2;
-
-        const leftCol  = Math.max(0, Math.floor(spriteX));
-        const rightCol = Math.min(NUM_RAYS - 1, Math.floor(spriteX + spriteWidth));
-        let blocked = true;
-        const correctedEnemyDist = dist * Math.cos(diff);
-        for (let col = leftCol; col <= rightCol; col++) {
-          if (depthBuffer[col] > correctedEnemyDist) {
-            blocked = false;
-            break;
-          }
-        }
-        if (blocked) continue;
-
-        ctx.drawImage(sprite, spriteX, spriteY, spriteWidth, spriteHeight);
+      if (itemsCollected >= totalItems && gameState === "running") {
+        gameState = "levelComplete";
       }
     }
 
-    // ===== FLOOR =====
-    function renderFloorWithPerspective() {
-      const w = canvas.width;
-      const h = canvas.height;
-      const halfH = h / 2;
-
-      if (!floorTextureReady || !floorPattern) {
-        ctx.fillStyle = "#303033";
-        ctx.fillRect(0, halfH, w, halfH);
-        return;
-      }
-
-      const slices = 40;
-      const nearScale = 0.45;
-      const farScale  = 1.9;
-
-      for (let i = 0; i < slices; i++) {
-        const t0 = i / slices;
-        const t1 = (i + 1) / slices;
-
-        const y0 = halfH + t0 * halfH;
-        const y1 = halfH + t1 * halfH;
-        const sliceH = y1 - y0;
-
-        let scale = farScale + (nearScale - farScale) * t1;
-
-        if (typeof DOMMatrix !== "undefined" && floorPattern && typeof floorPattern.setTransform === "function") {
-          const m = new DOMMatrix();
-          m.a = scale;
-          m.d = scale;
-          floorPattern.setTransform(m);
-        }
-
-        ctx.save();
-        ctx.fillStyle = floorPattern;
-        ctx.fillRect(0, y0, w, sliceH);
-        ctx.restore();
-
-        const shade = 0.25 + 0.5 * t0;
-        ctx.save();
-        ctx.fillStyle = `rgba(0,0,0,${shade})`;
-        ctx.fillRect(0, y0, w, sliceH);
-        ctx.restore();
-      }
-    }
-
-    // ===== HUD =====
-    function renderHUD() {
-      const w = canvas.width;
-      const h = canvas.height;
-      const hudHeight = 90;
-      const hudTop = h - hudHeight;
-
-      if (hud.bar && hud.bar.complete && hud.bar.naturalWidth > 0) {
-        ctx.drawImage(hud.bar, 0, hudTop, w, hudHeight);
-      } else {
-        ctx.fillStyle = "#222";
-        ctx.fillRect(0, hudTop, w, hudHeight);
-      }
-
-      const columns = 7; // ITEM1,2,3,HERO,ITEM4,ITEM5,TIMER
-      const colW = w / columns;
-      const centerY = hudTop + hudHeight / 2;
-
-      const itemSlotIndices = [0, 1, 2, 4, 5];
-      const itemScales = [0.45, 0.45, 0.18, 0.20, 0.45];
-
-      for (let i = 0; i < 5; i++) {
-        const img = hud.items[i];
-        if (itemsCollected > i &&
-            img &&
-            img.complete &&
-            img.naturalWidth > 0 &&
-            img.naturalHeight > 0) {
-          const scale = itemScales[i];
-          const iw = img.width * scale;
-          const ih = img.height * scale;
-          const slotIndex = itemSlotIndices[i];
-          const cx = colW * (slotIndex + 0.5);
-          ctx.drawImage(img, cx - iw / 2, centerY - ih / 2, iw, ih);
-        }
-      }
-
-      // hero face
-      let faceImg = null;
-      if (punchState.active &&
-          punchState.time < punchState.duration * 0.5 &&
-          hud.angryFace && hud.angryFace.complete && hud.angryFace.naturalWidth > 0) {
-        faceImg = hud.angryFace;
-      } else if (hud.happyFace && hud.happyFace.complete && hud.happyFace.naturalWidth > 0) {
-        faceImg = hud.happyFace;
-      }
-
-      if (faceImg) {
-        const scale = 0.07;
-        const iw = faceImg.width * scale;
-        const ih = faceImg.height * scale;
-        const cx = colW * (3 + 0.5);
-        ctx.drawImage(faceImg, cx - iw / 2, centerY - ih / 2, iw, ih);
-      }
-
-      // countdown timer (with flashing last 10s)
-      const timerX = colW * (6 + 0.5);
-      const remaining = Math.max(0, TIME_LIMIT - elapsedTime);
-      const totalSeconds = Math.floor(remaining);
-      const minutes = Math.floor(totalSeconds / 60);
-      const seconds = totalSeconds % 60;
-      const timeStr =
-        `${minutes.toString().padStart(2,"0")}:${seconds.toString().padStart(2,"0")}`;
-
-      const isCritical = remaining <= 10;
-      const flashOn = isCritical && (Math.floor(globalTime * 4) % 2 === 0);
-
-      ctx.font = "28px monospace";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-
-      if (isCritical) {
-        ctx.fillStyle = flashOn ? "#ff5555" : "#660000";
-      } else {
-        ctx.fillStyle = "#ff3333";
-      }
-
-      ctx.fillText(timeStr, timerX, centerY + 4);
-    }
-
-    // ===== RENDER =====
-    function render() {
-      const w = canvas.width;
-      const h = canvas.height;
+    // ------------ GAME RENDER -------------
+    function renderGame() {
+      const w = canvas.width, h = canvas.height;
       const halfH = h / 2;
 
       ctx.clearRect(0, 0, w, h);
 
-      // full-screen screens
-      if (gameState === "title") {
-        drawFullScreenImage(screens.title);
-        return;
-      }
-      if (gameState === "prescreen") {
-        drawFullScreenImage(screens.prescreen);
-        return;
-      }
-      if (gameState === "won") {
-        drawFullScreenImage(screens.win);
-        return;
-      }
-      if (gameState === "continue") {
-        drawFullScreenImage(screens.cont);
-        return;
-      }
-      if (gameState === "gameover") {
-        drawFullScreenImage(screens.gameOver);
-        return;
-      }
-
-      // playing view
+      // ceiling
       const ceilingGrad = ctx.createLinearGradient(0, 0, 0, halfH);
       ceilingGrad.addColorStop(0, "#101015");
       ceilingGrad.addColorStop(1, "#181820");
       ctx.fillStyle = ceilingGrad;
       ctx.fillRect(0, 0, w, halfH);
 
-      renderFloorWithPerspective();
+      // floor
+      ctx.fillStyle = floorPattern ? floorPattern : "#303033";
+      ctx.fillRect(0, halfH, w, halfH);
 
       // walls
       for (let i = 0; i < NUM_RAYS; i++) {
@@ -925,45 +907,31 @@
         const rayAngle = player.angle + rayScreenPos * FOV;
 
         const { distance, tile, hitMapX, hitMapY, worldX, worldY } = castRay(rayAngle);
-        if (tile === 0) {
-          depthBuffer[i] = MAX_DEPTH;
-          continue;
-        }
+        if (tile === 0) { depthBuffer[i] = MAX_DEPTH; continue; }
 
-        let corrected = distance * Math.cos(rayAngle - player.angle);
-        if (corrected < 16) corrected = 16;
+        const corrected = distance * Math.cos(rayAngle - player.angle);
         depthBuffer[i] = corrected;
 
-        const wallHeight = (TILE_SIZE / corrected) * 260;
+        const wallHeight = (TILE_SIZE / corrected) * 220;
         const colHeight = wallHeight;
         const colY = halfH - colHeight / 2;
 
-        const texIndex =
-          ((hitMapX + hitMapY) % wallTextures.length + wallTextures.length) % wallTextures.length;
+        const texIndex = ((hitMapX + hitMapY) % wallTextures.length + wallTextures.length) % wallTextures.length;
         const tex = wallTextures[texIndex];
 
-        if (tex && tex.complete && tex.naturalWidth > 0 && tex.naturalHeight > 0) {
-          const texW = tex.width;
-          const texH = tex.height;
+        if (tex && tex.complete && tex.width > 0) {
+          const texW = tex.width, texH = tex.height;
 
           const hitXmod = ((worldX % TILE_SIZE) + TILE_SIZE) % TILE_SIZE;
           const hitYmod = ((worldY % TILE_SIZE) + TILE_SIZE) % TILE_SIZE;
 
           let u;
-          if (hitXmod < 1 || hitXmod > TILE_SIZE - 1) {
-            u = hitYmod / TILE_SIZE;
-          } else {
-            u = hitXmod / TILE_SIZE;
-          }
+          if (hitXmod < 1 || hitXmod > TILE_SIZE - 1) u = hitYmod / TILE_SIZE;
+          else u = hitXmod / TILE_SIZE;
 
-          const uScaled = (u * WALL_TEX_SCALE) % 1;
-          const texX = Math.floor(uScaled * texW);
+          const texX = Math.floor(u * texW);
 
-          ctx.drawImage(
-            tex,
-            texX, 0, 1, texH,
-            i, colY, 1, colHeight
-          );
+          ctx.drawImage(tex, texX, 0, 1, texH, i, colY, 1, colHeight);
         } else {
           ctx.fillStyle = "#7a3b2e";
           ctx.fillRect(i, colY, 1, colHeight);
@@ -977,32 +945,35 @@
         ctx.restore();
       }
 
-      renderEnemies();
+      // enemies
+      renderEnemies(halfH);
+
+      // fist (BEFORE HUD so HUD covers it)
+      const frame = getPunchFrame();
+      if (frame) {
+        const hudHeight = 90;
+        const scale = 2.2;
+        const imgW = frame.width * scale;
+        const imgH = frame.height * scale;
+        const x = canvas.width / 2 - imgW / 2 + 60;
+        const y = canvas.height - hudHeight - imgH + 35;
+        ctx.drawImage(frame, x, y, imgW, imgH);
+      }
 
       // minimap
-      const miniScale = 5;
-      const offsetX = 10;
-      const offsetY = 10;
-
+      const miniScale = 5, offsetX = 10, offsetY = 10;
       for (let y = 0; y < MAP_HEIGHT; y++) {
         for (let x = 0; x < MAP_WIDTH; x++) {
           const t = tileAt(x, y);
           ctx.fillStyle = (t === 0) ? "#202020" : "#7a3b2e";
-          ctx.fillRect(
-            offsetX + x * miniScale,
-            offsetY + y * miniScale,
-            miniScale,
-            miniScale
-          );
+          ctx.fillRect(offsetX + x * miniScale, offsetY + y * miniScale, miniScale, miniScale);
         }
       }
 
       for (const enemy of enemies) {
         const ex = offsetX + (enemy.x / TILE_SIZE) * miniScale;
         const ey = offsetY + (enemy.y / TILE_SIZE) * miniScale;
-        ctx.fillStyle =
-          (enemy.state === "dead" || enemy.state === "dying" || enemy.state === "finalHit")
-            ? "#aa0000" : "#ff4444";
+        ctx.fillStyle = (enemy.state === "dead" || enemy.state === "dying" || enemy.state === "finalHit") ? "#aa0000" : "#ff4444";
         ctx.fillRect(ex - 2, ey - 2, 4, 4);
       }
 
@@ -1014,41 +985,33 @@
       ctx.strokeStyle = "#00ff88";
       ctx.beginPath();
       ctx.moveTo(px, py);
-      ctx.lineTo(
-        px + Math.cos(player.angle) * 10,
-        py + Math.sin(player.angle) * 10
-      );
+      ctx.lineTo(px + Math.cos(player.angle) * 10, py + Math.sin(player.angle) * 10);
       ctx.stroke();
 
-      // punch overlay (under HUD)
-      const frame = getPunchFrame();
-      if (frame) {
-        const hudHeight = 90;
-        const hudTop = h - hudHeight;
-        const scale = 2.2;
-        const imgW = frame.width * scale;
-        const imgH = frame.height * scale;
-        const x = canvas.width / 2 - imgW / 2 + 60;
-        let y = hudTop - imgH + 35;
-        if (y < halfH) y = halfH;
-        ctx.drawImage(frame, x, y, imgW, imgH);
-      }
-
+      // HUD
       renderHUD();
     }
 
-    // ===== MAIN LOOP =====
+    function render() {
+      if (gameState === "title") { drawFullScreenImage(screenImages.title); return; }
+      if (gameState === "prescreen") { drawFullScreenImage(screenImages.prescreen); return; }
+
+      renderGame();
+
+      if (gameState === "levelComplete") drawFullScreenImage(screenImages.complete);
+      else if (gameState === "continuePrompt") drawFullScreenImage(screenImages.continue);
+      else if (gameState === "gameOver") drawFullScreenImage(screenImages.gameover);
+    }
+
+    // ------------ MAIN LOOP -------------
     let lastTime = performance.now();
     function loop(now) {
       const dt = (now - lastTime) / 1000;
       lastTime = now;
-      globalTime += dt;
       update(dt);
       render();
       requestAnimationFrame(loop);
     }
-
-    updateStatusText();
     requestAnimationFrame(loop);
   </script>
 </body>
