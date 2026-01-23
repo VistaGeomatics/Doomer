@@ -3,21 +3,29 @@
 <head>
   <meta charset="UTF-8" />
   <title>Warehouse Run – Stolen Property Hunt</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Prevent mobile pinch/auto zoom -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+
   <style>
     * { box-sizing: border-box; }
 
-    body {
+    html, body {
       margin: 0;
+      height: 100%;
+      overflow: hidden;           /* prevents page bounce/zoom feel */
       background: #000;
       color: #eee;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      touch-action: none;         /* prevents browser gestures */
+      -webkit-text-size-adjust: 100%;
+    }
+
+    body {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: flex-start;
-      min-height: 100vh;
-      touch-action: none;
     }
 
     #title {
@@ -27,13 +35,14 @@
       text-transform: uppercase;
       font-size: 14px;
       color: #888;
+      user-select: none;
     }
 
     #game-container {
-      margin-top: 10px;
       width: 100%;
       display: flex;
       justify-content: center;
+      padding-top: 8px;
     }
 
     canvas {
@@ -41,22 +50,29 @@
       background: #000;
       display: block;
       touch-action: none;
-      /* JS sets width/height responsively */
     }
 
     #hud {
-      text-align: center;
-      margin-top: 8px;
-      font-size: 14px;
-      color: #bbb;
-      padding-bottom: 130px; /* space for touch controls */
       width: 100%;
       max-width: 980px;
+      text-align: center;
+      margin-top: 6px;
+      font-size: 14px;
+      color: #bbb;
+      padding-bottom: 130px; /* room for touch controls */
+      user-select: none;
     }
 
     #controls { font-size: 12px; color: #777; }
     #objective { font-size: 13px; color: #aaa; margin-top: 4px; }
     #status { margin-top: 6px; }
+
+    /* Hide extra HUD text on small mobile to give canvas more room */
+    @media (max-width: 900px) and (pointer:coarse) {
+      #controls, #objective { display: none; }
+      #hud { padding-bottom: 135px; margin-top: 0; }
+      #title { margin-top: 6px; font-size: 12px; }
+    }
 
     /* ---------------- MOBILE CONTROLS ---------------- */
     #touch-controls {
@@ -71,7 +87,7 @@
       padding: 14px 16px 16px;
       z-index: 50;
       pointer-events: none;
-      background: linear-gradient(to top, rgba(0,0,0,0.40), rgba(0,0,0,0));
+      background: linear-gradient(to top, rgba(0,0,0,0.35), rgba(0,0,0,0));
     }
 
     .left-controls, .right-controls {
@@ -79,17 +95,17 @@
       user-select: none;
       -webkit-user-select: none;
       -webkit-touch-callout: none;
+      touch-action: none;
     }
 
-    /* Joystick */
     .joystick {
-      width: 118px;
-      height: 118px;
+      width: 132px;
+      height: 132px;
       border-radius: 999px;
       position: relative;
-      border: 2px solid rgba(255,255,255,0.10);
-      background: rgba(30,30,35,0.28); /* more transparent */
-      box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+      border: 2px solid rgba(255,255,255,0.08);
+      background: rgba(30,30,35,0.20); /* more transparent */
+      box-shadow: 0 10px 24px rgba(0,0,0,0.30);
       touch-action: none;
       overflow: hidden;
     }
@@ -97,32 +113,32 @@
     .joystick::after {
       content: "";
       position: absolute;
-      inset: 16px;
+      inset: 18px;
       border-radius: 999px;
-      border: 1px dashed rgba(255,255,255,0.10);
+      border: 1px dashed rgba(255,255,255,0.08);
       opacity: 0.7;
     }
 
     .stick {
-      width: 52px;
-      height: 52px;
+      width: 54px;
+      height: 54px;
       border-radius: 999px;
       position: absolute;
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
-      border: 2px solid rgba(255,255,255,0.12);
-      background: rgba(220,220,240,0.18); /* more transparent */
-      box-shadow: 0 8px 16px rgba(0,0,0,0.35);
+      border: 2px solid rgba(255,255,255,0.10);
+      background: rgba(220,220,240,0.14); /* more transparent */
+      box-shadow: 0 8px 16px rgba(0,0,0,0.30);
+      touch-action: none;
     }
 
-    /* Punch */
     .punch {
-      width: 108px;
-      height: 108px;
+      width: 112px;
+      height: 112px;
       border-radius: 26px;
-      border: 2px solid rgba(255,255,255,0.12);
-      background: rgba(120,25,25,0.28); /* more transparent */
+      border: 2px solid rgba(255,255,255,0.10);
+      background: rgba(120,25,25,0.22); /* more transparent */
       color: rgba(255,255,255,0.92);
       font-weight: 900;
       letter-spacing: 0.04em;
@@ -130,13 +146,13 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 12px 26px rgba(0,0,0,0.40);
+      box-shadow: 0 12px 26px rgba(0,0,0,0.35);
       touch-action: none;
     }
 
     .punch:active {
       transform: translateY(1px);
-      background: rgba(170,30,30,0.36);
+      background: rgba(170,30,30,0.30);
     }
   </style>
 </head>
@@ -156,7 +172,6 @@
     <div id="status"></div>
   </div>
 
-  <!-- Touch controls -->
   <div id="touch-controls" aria-label="Mobile controls">
     <div class="left-controls">
       <div class="joystick" id="joystick">
@@ -180,7 +195,6 @@
     const statusEl = document.getElementById("status");
     const bgm = document.getElementById("bgm");
 
-    // Internal render size (keeps ray count stable)
     const BASE_W = 960;
     const BASE_H = 540;
     canvas.width = BASE_W;
@@ -195,7 +209,7 @@
     }
 
     /**********************
-     * RESPONSIVE CANVAS FIT
+     * RESPONSIVE CANVAS FIT (bigger on mobile)
      **********************/
     const touchControlsEl = document.getElementById("touch-controls");
     const isTouch = window.matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
@@ -205,50 +219,41 @@
       const vw = window.innerWidth;
       const vh = window.innerHeight;
 
-      // Reserve space for title + HUD + touch controls (only on touch)
-      const titleH = document.getElementById("title").offsetHeight + 12;
-      const hudH = document.getElementById("hud").offsetHeight;
-      const controlsH = isTouch ? 140 : 0;
+      const titleH = document.getElementById("title").offsetHeight + 8;
+      const controlsH = isTouch ? 130 : 0;
 
-      // We only need to reserve a *bit* of HUD space; HUD can scroll, but canvas should fit well.
-      // In landscape, HUD is smaller, so this helps it “fill the screen”.
-      const reserve = isTouch ? (titleH + 30 + controlsH) : (titleH + 30);
+      // Reserve only what we must (title + controls). This makes the game fill mobile.
+      const reserve = titleH + controlsH + (isTouch ? 8 : 16);
 
       const availW = vw;
-      const availH = Math.max(220, vh - reserve);
+      const availH = Math.max(200, vh - reserve);
 
       const aspect = BASE_W / BASE_H;
 
-      let cssW = availW;
-      let cssH = cssW / aspect;
+      let cssH = availH;
+      let cssW = cssH * aspect;
 
-      if (cssH > availH) {
-        cssH = availH;
-        cssW = cssH * aspect;
+      if (cssW > availW) {
+        cssW = availW;
+        cssH = cssW / aspect;
       }
-
-      // Slight padding in landscape so it doesn't touch edges
-      const pad = (vw > vh) ? 8 : 0;
-      cssW = Math.max(240, cssW - pad);
-      cssH = Math.max(140, cssH - pad / aspect);
 
       canvas.style.width = Math.floor(cssW) + "px";
       canvas.style.height = Math.floor(cssH) + "px";
     }
 
     window.addEventListener("resize", fitCanvasToScreen);
-    window.addEventListener("orientationchange", () => setTimeout(fitCanvasToScreen, 100));
+    window.addEventListener("orientationchange", () => setTimeout(fitCanvasToScreen, 120));
     fitCanvasToScreen();
 
     /**********************
-     * GAME STATE / SCREENS
+     * GAME STATE
      **********************/
     let gameState = "title";
     let continueUsed = false;
 
     const LEVEL_TIME = 120;
     let remainingTime = LEVEL_TIME;
-
     let levelCompleteDelay = 0;
 
     const screenImages = {
@@ -274,7 +279,7 @@
     punchSound.volume = 1.0;
 
     /**********************
-     * SCREEN FEEDBACK
+     * FEEDBACK
      **********************/
     let hitMarkerT = 0;
     let shakeT = 0;
@@ -325,10 +330,7 @@
     const MAP_HEIGHT = asciiMap.length;
     const MAP_WIDTH  = asciiMap[0].length;
 
-    const map = asciiMap.map(row =>
-      row.split("").map(ch => (ch === "." || ch === "P") ? 0 : 1)
-    );
-
+    const map = asciiMap.map(row => row.split("").map(ch => (ch === "." || ch === "P") ? 0 : 1));
     const TILE_SIZE = 64;
 
     function tileAt(tx, ty) {
@@ -367,21 +369,31 @@
     // Joystick output (-1..1)
     const joy = { x: 0, y: 0, active: false };
 
+    // Make joystick MUCH less touchy:
+    const JOY_DEADZONE = 0.22;     // bigger deadzone
+    const joyRadius = 60;          // more travel so it's controllable
+    const JOY_TURN_SCALE = 0.55;   // smaller turning contribution
+    const JOY_MOVE_SCALE = 0.90;   // movement can stay stronger
+    const JOY_CURVE_EXP = 1.7;     // non-linear curve to soften near center
+
+    function curve(v) {
+      const s = Math.sign(v);
+      const a = Math.abs(v);
+      return s * Math.pow(a, JOY_CURVE_EXP);
+    }
+
     // Floor quality toggle
     let FLOOR_RES = 2;
 
     window.addEventListener("keydown", (e) => {
       startBgm();
-
       if (!keys[e.code]) {
         if (e.code === "Space") handlePrimaryAction();
       }
-
       if (e.code === "KeyQ") {
         FLOOR_RES = (FLOOR_RES === 1) ? 2 : (FLOOR_RES === 2) ? 3 : 1;
         rebuildFloorBuffer();
       }
-
       keys[e.code] = true;
     });
 
@@ -398,13 +410,11 @@
       if (gameState === "levelComplete" || gameState === "gameOver") resetGameCompletely();
     }
 
-    // Tap canvas (desktop click / mobile tap) advances or punches
+    // Tap canvas: advance screens (avoid accidental punch on touch)
     canvas.addEventListener("pointerdown", (e) => {
       startBgm();
       e.preventDefault();
-      if (!isTouch) handlePrimaryAction();
-      // On touch, punches are via PUNCH button to avoid accidental taps while aiming
-      if (gameState !== "running" && isTouch) handlePrimaryAction();
+      if (gameState !== "running") handlePrimaryAction();
     }, { passive:false });
 
     /**********************
@@ -413,12 +423,8 @@
     const joystickEl = document.getElementById("joystick");
     const stickEl = document.getElementById("stick");
 
-    const JOY_DEADZONE = 0.12;   // normalized
-    const JOY_MAX = 1.0;
-
     let joyPointerId = null;
     let joyCenter = { x: 0, y: 0 };
-    const joyRadius = 46; // pixels, for knob travel
 
     function setStickVisual(nx, ny) {
       const px = nx * joyRadius;
@@ -439,13 +445,14 @@
         return;
       }
 
-      // scale out of deadzone so it ramps smoothly
+      // scale out of deadzone
       const scaled = Math.min(1, (m - JOY_DEADZONE) / (1 - JOY_DEADZONE));
       const ux = nx / m;
       const uy = ny / m;
 
-      joy.x = ux * scaled;
-      joy.y = uy * scaled;
+      // apply non-linear curve
+      joy.x = curve(ux * scaled);
+      joy.y = curve(uy * scaled);
 
       setStickVisual(joy.x, joy.y);
     }
@@ -462,6 +469,7 @@
         joyCenter.y = r.top + r.height / 2;
 
         joystickEl.setPointerCapture(e.pointerId);
+
         setJoy((e.clientX - joyCenter.x) / joyRadius, (e.clientY - joyCenter.y) / joyRadius);
       }, { passive:false });
 
@@ -484,7 +492,7 @@
       joystickEl.addEventListener("pointercancel", joyUp, { passive:false });
     }
 
-    // Punch button
+    // Punch button (also prevents iOS zoom-jank)
     (function bindPunchOnce(){
       const el = document.getElementById("btn-punch");
       let pressed = false;
@@ -492,6 +500,7 @@
       el.addEventListener("pointerdown", (ev) => {
         startBgm();
         ev.preventDefault();
+        ev.stopPropagation();
         if (pressed) return;
         pressed = true;
 
@@ -504,6 +513,7 @@
 
       const release = (ev) => {
         ev.preventDefault();
+        ev.stopPropagation();
         pressed = false;
       };
 
@@ -868,17 +878,15 @@
     }
 
     /**********************
-     * SPRITES (safe)
+     * SPRITES
      **********************/
     const burglarSprites = { standing:null, walk1:null, walk2:null, away:null, hit:null, falling:null, dead:null };
-
     function loadBurglarSprite(name, file) {
       const img = new Image();
       img.src = file;
       img.onload = () => { burglarSprites[name] = img; };
       return img;
     }
-
     loadBurglarSprite("standing","BGStanding.png");
     loadBurglarSprite("walk1","BGWalking1.png");
     loadBurglarSprite("walk2","BGwalking2.png");
@@ -925,7 +933,6 @@
 
     function areAssetsReady() {
       if (!isImgReady(screenImages.title) || !isImgReady(screenImages.prescreen)) return false;
-      if (!isImgReady(hud.bar)) return false;
       if (!floorTex.ready) return false;
       if (!isImgReady(burglarSprites.standing)) return false;
       return true;
@@ -959,6 +966,72 @@
       }
 
       return { distance, tile: hitTile, hitMapX, hitMapY, worldX: rayX, worldY: rayY };
+    }
+
+    /**********************
+     * HUD DRAW (unchanged from your version logic)
+     **********************/
+    function renderHUD() {
+      const w = canvas.width, h = canvas.height;
+      const hudHeight = 90;
+      const hudTop = h - hudHeight;
+
+      if (isImgReady(hud.bar)) ctx.drawImage(hud.bar, 0, hudTop, w, hudHeight);
+      else { ctx.fillStyle="#222"; ctx.fillRect(0, hudTop, w, hudHeight); }
+
+      const columns = 7;
+      const colW = w / columns;
+      const centerY = hudTop + hudHeight / 2;
+
+      const ITEM_DRAW = [
+        { scale: 0.50, slot: 0 },
+        { scale: 0.50, slot: 1 },
+        { scale: 0.30, slot: 2 }, // Tribrach smaller
+        { scale: 0.30, slot: 4 }, // Battery smaller
+        { scale: 0.45, slot: 5 }
+      ];
+
+      for (let i = 0; i < 5; i++) {
+        if (itemsCollected > i && isImgReady(hud.items[i])) {
+          const img = hud.items[i];
+          const cfg = ITEM_DRAW[i];
+
+          const maxW = colW * 0.72;
+          const maxH = hudHeight * 0.72;
+
+          let iw = img.width * cfg.scale;
+          let ih = img.height * cfg.scale;
+
+          const clamp = Math.min(1, maxW / iw, maxH / ih);
+          iw *= clamp; ih *= clamp;
+
+          const cx = colW * (cfg.slot + 0.5);
+          ctx.drawImage(img, cx - iw/2, centerY - ih/2, iw, ih);
+        }
+      }
+
+      let faceImg = null;
+      if (punchState.active && punchState.time < punchState.duration * 0.5 && isImgReady(hud.angryFace)) faceImg = hud.angryFace;
+      else if (isImgReady(hud.happyFace)) faceImg = hud.happyFace;
+
+      if (faceImg) {
+        const scale = 0.07;
+        const iw = faceImg.width * scale, ih = faceImg.height * scale;
+        const cx = colW * (3 + 0.5);
+        ctx.drawImage(faceImg, cx - iw/2, centerY - ih/2, iw, ih);
+      }
+
+      const timerX = colW * (6 + 0.5);
+      const totalSeconds = Math.max(0, Math.floor(remainingTime));
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      const timeStr = `${minutes.toString().padStart(2,"0")}:${seconds.toString().padStart(2,"0")}`;
+
+      ctx.font = "28px monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#ff3333";
+      ctx.fillText(timeStr, timerX, centerY + 4);
     }
 
     /**********************
@@ -1011,74 +1084,7 @@
     }
 
     /**********************
-     * HUD DRAW
-     **********************/
-    function renderHUD() {
-      const w = canvas.width, h = canvas.height;
-      const hudHeight = 90;
-      const hudTop = h - hudHeight;
-
-      if (isImgReady(hud.bar)) ctx.drawImage(hud.bar, 0, hudTop, w, hudHeight);
-      else { ctx.fillStyle="#222"; ctx.fillRect(0, hudTop, w, hudHeight); }
-
-      const columns = 7;
-      const colW = w / columns;
-      const centerY = hudTop + hudHeight / 2;
-
-      // tribrach + battery smaller
-      const ITEM_DRAW = [
-        { scale: 0.50, slot: 0 },
-        { scale: 0.50, slot: 1 },
-        { scale: 0.30, slot: 2 }, // Tribrachs.png smaller
-        { scale: 0.30, slot: 4 }, // battery copy.png smaller
-        { scale: 0.45, slot: 5 }
-      ];
-
-      for (let i = 0; i < 5; i++) {
-        if (itemsCollected > i && isImgReady(hud.items[i])) {
-          const img = hud.items[i];
-          const cfg = ITEM_DRAW[i];
-
-          const maxW = colW * 0.72;
-          const maxH = hudHeight * 0.72;
-
-          let iw = img.width * cfg.scale;
-          let ih = img.height * cfg.scale;
-
-          const clamp = Math.min(1, maxW / iw, maxH / ih);
-          iw *= clamp; ih *= clamp;
-
-          const cx = colW * (cfg.slot + 0.5);
-          ctx.drawImage(img, cx - iw/2, centerY - ih/2, iw, ih);
-        }
-      }
-
-      let faceImg = null;
-      if (punchState.active && punchState.time < punchState.duration * 0.5 && isImgReady(hud.angryFace)) faceImg = hud.angryFace;
-      else if (isImgReady(hud.happyFace)) faceImg = hud.happyFace;
-
-      if (faceImg) {
-        const scale = 0.07;
-        const iw = faceImg.width * scale, ih = faceImg.height * scale;
-        const cx = colW * (3 + 0.5);
-        ctx.drawImage(faceImg, cx - iw/2, centerY - ih/2, iw, ih);
-      }
-
-      const timerX = colW * (6 + 0.5);
-      const totalSeconds = Math.max(0, Math.floor(remainingTime));
-      const minutes = Math.floor(totalSeconds / 60);
-      const seconds = totalSeconds % 60;
-      const timeStr = `${minutes.toString().padStart(2,"0")}:${seconds.toString().padStart(2,"0")}`;
-
-      ctx.font = "28px monospace";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillStyle = "#ff3333";
-      ctx.fillText(timeStr, timerX, centerY + 4);
-    }
-
-    /**********************
-     * UPDATE
+     * UPDATE (with calmer joystick)
      **********************/
     function update(dt) {
       if (gameState === "levelCompleteDelay") {
@@ -1103,7 +1109,7 @@
       shakeT = Math.max(0, shakeT - dt);
       hitVignetteT = Math.max(0, hitVignetteT - dt);
 
-      // Turn input (keyboard + joystick)
+      // Turn input (keyboard + joystick X, scaled down)
       const turnLeft  = keys["ArrowLeft"] || keys["KeyA"];
       const turnRight = keys["ArrowRight"]|| keys["KeyD"];
 
@@ -1111,8 +1117,8 @@
       if (turnLeft) turnInput -= 1;
       if (turnRight) turnInput += 1;
 
-      // joystick X adds analog turning
-      turnInput += joy.x;
+      // joystick turning, MUCH calmer
+      turnInput += (joy.x * JOY_TURN_SCALE);
 
       turnVel += turnInput * TURN_ACCEL * dt;
 
@@ -1125,7 +1131,7 @@
       turnVel = Math.max(-TURN_MAX, Math.min(TURN_MAX, turnVel));
       player.angle += turnVel * dt;
 
-      // Move input (keyboard + joystick)
+      // Move input (keyboard + joystick Y)
       const forward = keys["ArrowUp"] || keys["KeyW"];
       const back    = keys["ArrowDown"] || keys["KeyS"];
 
@@ -1133,8 +1139,8 @@
       if (forward) moveInput += 1;
       if (back)    moveInput -= 1;
 
-      // joystick Y: up is negative in screen coords, so invert
-      moveInput += (-joy.y);
+      // joystick Y: up is negative
+      moveInput += (-joy.y * JOY_MOVE_SCALE);
 
       moveVel += moveInput * MOVE_ACCEL * dt;
 
@@ -1264,37 +1270,9 @@
         ctx.drawImage(frame, x, y, imgW, imgH);
       }
 
-      // minimap
-      const miniScale = 5, offsetX = 10, offsetY = 10;
-      for (let y = 0; y < MAP_HEIGHT; y++) {
-        for (let x = 0; x < MAP_WIDTH; x++) {
-          const t = tileAt(x, y);
-          ctx.fillStyle = (t === 0) ? "#202020" : "#7a3b2e";
-          ctx.fillRect(offsetX + x * miniScale, offsetY + y * miniScale, miniScale, miniScale);
-        }
-      }
-
-      for (const enemy of enemies) {
-        const ex = offsetX + (enemy.x / TILE_SIZE) * miniScale;
-        const ey = offsetY + (enemy.y / TILE_SIZE) * miniScale;
-        ctx.fillStyle = (enemy.state === "dead" || enemy.state === "dying" || enemy.state === "finalHit") ? "#aa0000" : "#ff4444";
-        ctx.fillRect(ex - 2, ey - 2, 4, 4);
-      }
-
-      const px = offsetX + (player.x / TILE_SIZE) * miniScale;
-      const py = offsetY + (player.y / TILE_SIZE) * miniScale;
-      ctx.fillStyle = "#00ff88";
-      ctx.fillRect(px - 2, py - 2, 4, 4);
-
-      ctx.strokeStyle = "#00ff88";
-      ctx.beginPath();
-      ctx.moveTo(px, py);
-      ctx.lineTo(px + Math.cos(player.angle) * 10, py + Math.sin(player.angle) * 10);
-      ctx.stroke();
-
       renderHUD();
 
-      // Crosshair
+      // Crosshair dot
       ctx.save();
       ctx.globalAlpha = 0.85;
       ctx.fillStyle = "#ffffff";
@@ -1320,7 +1298,7 @@
         ctx.restore();
       }
 
-      // Vignette (time low + hit flash)
+      // Vignette
       const lowTime = remainingTime <= 15 ? (1 - remainingTime / 15) : 0;
       const hitFlash = hitVignetteT > 0 ? (hitVignetteT / 0.20) : 0;
       const vig = Math.min(0.75, lowTime * 0.55 + hitFlash * 0.45);
@@ -1365,10 +1343,7 @@
     function loop(now) {
       const dt = Math.min(0.05, (now - lastTime) / 1000);
       lastTime = now;
-
-      try { update(dt); render(); }
-      catch (err) { console.error(err); }
-
+      try { update(dt); render(); } catch (err) { console.error(err); }
       requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
