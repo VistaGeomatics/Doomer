@@ -4,8 +4,9 @@
   <meta charset="UTF-8" />
   <title>Warehouse Run – Stolen Property Hunt</title>
 
-  <!-- Prevent mobile pinch/auto zoom -->
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <!-- Mobile: prevent zoom + fit viewport nicely -->
+  <meta name="viewport"
+        content="width=device-width, height=device-height, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 
   <style>
     * { box-sizing: border-box; }
@@ -13,113 +14,105 @@
     html, body {
       margin: 0;
       height: 100%;
-      overflow: hidden;           /* prevents page bounce/zoom feel */
       background: #000;
       color: #eee;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      touch-action: none;         /* prevents browser gestures */
-      -webkit-text-size-adjust: 100%;
+      overflow: hidden;
+      touch-action: none; /* stop scroll/pinch conflicts */
     }
 
-    body {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-    }
-
-    #title {
-      margin-top: 8px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      font-size: 14px;
-      color: #888;
-      user-select: none;
-    }
-
-    #game-container {
-      width: 100%;
-      display: flex;
-      justify-content: center;
-      padding-top: 8px;
+    /* Fullscreen stage */
+    #stage {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right)
+               calc(env(safe-area-inset-bottom) + 120px)
+               env(safe-area-inset-left);
     }
 
     canvas {
-      border: 2px solid #444;
-      background: #000;
       display: block;
+      background: #000;
+      border: 2px solid #444;
+      /* responsive: maximize canvas area while keeping 16:9 */
+      width: min(100vw, calc((100vh - 120px) * (16 / 9)));
+      height: min(calc(100vh - 120px), calc(100vw * (9 / 16)));
+      image-rendering: pixelated;
       touch-action: none;
     }
 
+    /* HUD overlay (small, non-intrusive on mobile) */
     #hud {
-      width: 100%;
-      max-width: 980px;
+      position: fixed;
+      left: 0; right: 0;
+      top: 0;
+      padding: calc(env(safe-area-inset-top) + 10px) 12px 10px;
       text-align: center;
-      margin-top: 6px;
-      font-size: 14px;
+      font-size: 13px;
       color: #bbb;
-      padding-bottom: 130px; /* room for touch controls */
-      user-select: none;
+      pointer-events: none;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0));
     }
 
-    #controls { font-size: 12px; color: #777; }
-    #objective { font-size: 13px; color: #aaa; margin-top: 4px; }
-    #status { margin-top: 6px; }
-
-    /* Hide extra HUD text on small mobile to give canvas more room */
-    @media (max-width: 900px) and (pointer:coarse) {
-      #controls, #objective { display: none; }
-      #hud { padding-bottom: 135px; margin-top: 0; }
-      #title { margin-top: 6px; font-size: 12px; }
+    #title {
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 12px;
+      color: rgba(255,255,255,0.35);
     }
 
-    /* ---------------- MOBILE CONTROLS ---------------- */
+    #status { margin-top: 6px; color: rgba(255,255,255,0.7); }
+
+    #controlsHint {
+      margin-top: 6px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.35);
+    }
+
+    /* Touch controls (joystick + punch) */
     #touch-controls {
       position: fixed;
       left: 0;
       right: 0;
       bottom: 0;
-      height: 130px;
-      display: none;
+      height: 120px;
+      display: none; /* enabled by JS on touch devices */
       align-items: center;
       justify-content: space-between;
-      padding: 14px 16px 16px;
+      padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
       z-index: 50;
-      pointer-events: none;
-      background: linear-gradient(to top, rgba(0,0,0,0.35), rgba(0,0,0,0));
+      pointer-events: none; /* children re-enable */
+      background: linear-gradient(to top, rgba(0,0,0,0.45), rgba(0,0,0,0));
     }
 
-    .left-controls, .right-controls {
-      pointer-events: auto;
-      user-select: none;
-      -webkit-user-select: none;
-      -webkit-touch-callout: none;
-      touch-action: none;
-    }
+    /* More transparent controls */
+    .control-block { pointer-events: auto; user-select: none; -webkit-user-select: none; }
 
-    .joystick {
-      width: 132px;
-      height: 132px;
+    /* Joystick */
+    #joy-base {
+      width: 118px;
+      height: 118px;
       border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      border: 2px solid rgba(255,255,255,0.10);
+      box-shadow: 0 10px 18px rgba(0,0,0,0.45);
       position: relative;
-      border: 2px solid rgba(255,255,255,0.08);
-      background: rgba(30,30,35,0.20); /* more transparent */
-      box-shadow: 0 10px 24px rgba(0,0,0,0.30);
       touch-action: none;
       overflow: hidden;
     }
 
-    .joystick::after {
-      content: "";
+    #joy-ring {
       position: absolute;
-      inset: 18px;
+      inset: 0;
       border-radius: 999px;
-      border: 1px dashed rgba(255,255,255,0.08);
-      opacity: 0.7;
+      background: radial-gradient(circle at center, rgba(255,255,255,0.06), rgba(255,255,255,0.00) 60%);
+      opacity: 0.9;
     }
 
-    .stick {
+    #joy-stick {
       width: 54px;
       height: 54px;
       border-radius: 999px;
@@ -127,134 +120,122 @@
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
-      border: 2px solid rgba(255,255,255,0.10);
-      background: rgba(220,220,240,0.14); /* more transparent */
-      box-shadow: 0 8px 16px rgba(0,0,0,0.30);
+      background: rgba(255,255,255,0.12);
+      border: 2px solid rgba(255,255,255,0.14);
+      box-shadow: 0 10px 16px rgba(0,0,0,0.35);
       touch-action: none;
+      will-change: transform;
     }
 
-    .punch {
-      width: 112px;
-      height: 112px;
-      border-radius: 26px;
-      border: 2px solid rgba(255,255,255,0.10);
-      background: rgba(120,25,25,0.22); /* more transparent */
+    /* Punch button */
+    #punch {
+      width: 110px;
+      height: 110px;
+      border-radius: 28px;
+      border: 2px solid rgba(255,255,255,0.16);
+      background: rgba(170, 30, 30, 0.45);
       color: rgba(255,255,255,0.92);
       font-weight: 900;
       letter-spacing: 0.04em;
       font-size: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 12px 26px rgba(0,0,0,0.35);
+      display: grid;
+      place-items: center;
+      box-shadow: 0 12px 22px rgba(0,0,0,0.55);
       touch-action: none;
     }
 
-    .punch:active {
+    #punch:active, #punch.active {
       transform: translateY(1px);
-      background: rgba(170,30,30,0.30);
+      background: rgba(200, 40, 40, 0.60);
+      border-color: rgba(255,255,255,0.26);
+    }
+
+    /* Slightly tighter top HUD on small screens */
+    @media (max-width: 820px) {
+      #controlsHint { display: none; }
+      canvas { border-width: 0; }
     }
   </style>
 </head>
 
 <body>
-  <div id="title">WAREHOUSE RUN – STOLEN GPS</div>
+  <div id="hud">
+    <div id="title">WAREHOUSE RUN – STOLEN GPS</div>
+    <div id="status">Loading…</div>
+    <div id="controlsHint">W/S Move, A/D or ←/→ Turn, Space Punch, Q Floor Quality</div>
+  </div>
 
-  <div id="game-container">
+  <div id="stage">
     <canvas id="game"></canvas>
   </div>
 
-  <div id="hud">
-    <div id="controls">
-      W / S – Move &nbsp; | &nbsp; A / D or ← / → – Turn &nbsp; | &nbsp; Space – Punch &nbsp; | &nbsp; Q – Floor Quality
-    </div>
-    <div id="objective">Objective: Retrieve all 5 GPS components before time runs out.</div>
-    <div id="status"></div>
-  </div>
-
   <div id="touch-controls" aria-label="Mobile controls">
-    <div class="left-controls">
-      <div class="joystick" id="joystick">
-        <div class="stick" id="stick"></div>
+    <div class="control-block">
+      <div id="joy-base" aria-label="Joystick">
+        <div id="joy-ring"></div>
+        <div id="joy-stick"></div>
       </div>
     </div>
 
-    <div class="right-controls">
-      <div class="punch" id="btn-punch" title="Punch">PUNCH</div>
+    <div class="control-block">
+      <div id="punch" aria-label="Punch button">PUNCH</div>
     </div>
   </div>
 
+  <!-- background music -->
   <audio id="bgm" src="the-metal-loop-full.wav" loop></audio>
 
   <script>
     /**********************
-     * BASIC SETUP
+     * MOBILE ANTI-ZOOM FIXES
+     **********************/
+    // iOS Safari gesture zoom
+    document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive:false });
+    // Double-tap zoom prevention (older iOS)
+    let _lastTouchEnd = 0;
+    document.addEventListener("touchend", (e) => {
+      const now = Date.now();
+      if (now - _lastTouchEnd <= 280) e.preventDefault();
+      _lastTouchEnd = now;
+    }, { passive:false });
+
+    /**********************
+     * CANVAS SETUP (internal resolution + responsive sizing)
      **********************/
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
     const statusEl = document.getElementById("status");
     const bgm = document.getElementById("bgm");
 
+    // Keep 16:9 internal resolution, scale via CSS for mobile fullscreen
     const BASE_W = 960;
     const BASE_H = 540;
     canvas.width = BASE_W;
     canvas.height = BASE_H;
 
-    function loadImage(path) { const img = new Image(); img.src = path; return img; }
-    function isImgReady(img) { return !!(img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0); }
+    function loadImage(path) {
+      const img = new Image();
+      img.src = path;
+      return img;
+    }
+    function isImgReady(img) { return img && img.complete && img.naturalWidth > 0; }
+
     function drawFullScreenImage(img) {
       const w = canvas.width, h = canvas.height;
-      if (!isImgReady(img)) { ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h); return; }
+      if (!isImgReady(img)) { ctx.fillStyle = "#000"; ctx.fillRect(0, 0, w, h); return; }
       ctx.drawImage(img, 0, 0, w, h);
     }
 
     /**********************
-     * RESPONSIVE CANVAS FIT (bigger on mobile)
-     **********************/
-    const touchControlsEl = document.getElementById("touch-controls");
-    const isTouch = window.matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
-    if (isTouch) touchControlsEl.style.display = "flex";
-
-    function fitCanvasToScreen() {
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-
-      const titleH = document.getElementById("title").offsetHeight + 8;
-      const controlsH = isTouch ? 130 : 0;
-
-      // Reserve only what we must (title + controls). This makes the game fill mobile.
-      const reserve = titleH + controlsH + (isTouch ? 8 : 16);
-
-      const availW = vw;
-      const availH = Math.max(200, vh - reserve);
-
-      const aspect = BASE_W / BASE_H;
-
-      let cssH = availH;
-      let cssW = cssH * aspect;
-
-      if (cssW > availW) {
-        cssW = availW;
-        cssH = cssW / aspect;
-      }
-
-      canvas.style.width = Math.floor(cssW) + "px";
-      canvas.style.height = Math.floor(cssH) + "px";
-    }
-
-    window.addEventListener("resize", fitCanvasToScreen);
-    window.addEventListener("orientationchange", () => setTimeout(fitCanvasToScreen, 120));
-    fitCanvasToScreen();
-
-    /**********************
      * GAME STATE
      **********************/
-    let gameState = "title";
+    let gameState = "title"; // title, prescreen, running, continuePrompt, levelCompleteDelay, levelComplete, gameOver
     let continueUsed = false;
 
     const LEVEL_TIME = 120;
     let remainingTime = LEVEL_TIME;
-    let levelCompleteDelay = 0;
+
+    let levelCompleteDelay = 0; // 2s delay before final cutscene
 
     const screenImages = {
       title: loadImage("Level3.png"),
@@ -274,12 +255,11 @@
       bgm.play().catch(() => {});
       bgmStarted = true;
     }
-
     const punchSound = new Audio("Punch.wav");
     punchSound.volume = 1.0;
 
     /**********************
-     * FEEDBACK
+     * FEEDBACK (hit marker / shake / vignette)
      **********************/
     let hitMarkerT = 0;
     let shakeT = 0;
@@ -287,18 +267,19 @@
     let hitVignetteT = 0;
 
     /**********************
-     * MOVEMENT SMOOTHING
+     * MOVEMENT (SLOWED + SMOOTHER)
      **********************/
     let moveVel = 0;
     let turnVel = 0;
 
-    const MOVE_ACCEL = 900;
-    const MOVE_FRICTION = 1200;
-    const MOVE_MAX = 170;
+    // Slower, less twitchy
+    const MOVE_ACCEL = 520;
+    const MOVE_FRICTION = 1500;
+    const MOVE_MAX = 115;
 
-    const TURN_ACCEL = 10.0;
-    const TURN_FRICTION = 14.0;
-    const TURN_MAX = 2.8;
+    const TURN_ACCEL = 6.2;
+    const TURN_FRICTION = 18.0;
+    const TURN_MAX = 1.6;
 
     /**********************
      * MAP
@@ -337,7 +318,6 @@
       if (tx < 0 || tx >= MAP_WIDTH || ty < 0 || ty >= MAP_HEIGHT) return 1;
       return map[ty][tx];
     }
-
     function isSolid(px, py) {
       const tx = Math.floor(px / TILE_SIZE);
       const ty = Math.floor(py / TILE_SIZE);
@@ -353,7 +333,6 @@
         if (asciiMap[y][x] === "P") { spawnX = x + 0.5; spawnY = y + 0.5; }
       }
     }
-
     const player = { x: spawnX * TILE_SIZE, y: spawnY * TILE_SIZE, angle: 0 };
 
     const FOV = Math.PI / 3;
@@ -362,147 +341,144 @@
     const depthBuffer = new Array(NUM_RAYS);
 
     /**********************
-     * INPUT
+     * INPUT (Keyboard)
      **********************/
     const keys = {};
 
-    // Joystick output (-1..1)
-    const joy = { x: 0, y: 0, active: false };
-
-    // Make joystick MUCH less touchy:
-    const JOY_DEADZONE = 0.22;     // bigger deadzone
-    const joyRadius = 60;          // more travel so it's controllable
-    const JOY_TURN_SCALE = 0.55;   // smaller turning contribution
-    const JOY_MOVE_SCALE = 0.90;   // movement can stay stronger
-    const JOY_CURVE_EXP = 1.7;     // non-linear curve to soften near center
-
-    function curve(v) {
-      const s = Math.sign(v);
-      const a = Math.abs(v);
-      return s * Math.pow(a, JOY_CURVE_EXP);
-    }
-
-    // Floor quality toggle
+    // Floor quality toggle (1 sharp, 2 default, 3 faster)
     let FLOOR_RES = 2;
 
     window.addEventListener("keydown", (e) => {
       startBgm();
-      if (!keys[e.code]) {
-        if (e.code === "Space") handlePrimaryAction();
-      }
+      if (!keys[e.code] && e.code === "Space") handlePrimaryAction();
+
       if (e.code === "KeyQ") {
         FLOOR_RES = (FLOOR_RES === 1) ? 2 : (FLOOR_RES === 2) ? 3 : 1;
         rebuildFloorBuffer();
       }
+
       keys[e.code] = true;
-    });
+    }, { passive:true });
 
-    window.addEventListener("keyup", (e) => { keys[e.code] = false; });
-
-    function handlePrimaryAction() {
-      if (gameState === "running" && !punchState.active) { startPunch(); return; }
-      if (gameState === "title") { gameState = "prescreen"; return; }
-      if (gameState === "prescreen") { startLevel(); return; }
-      if (gameState === "continuePrompt") {
-        if (!continueUsed) { continueUsed = true; startLevel(); }
-        return;
-      }
-      if (gameState === "levelComplete" || gameState === "gameOver") resetGameCompletely();
-    }
-
-    // Tap canvas: advance screens (avoid accidental punch on touch)
-    canvas.addEventListener("pointerdown", (e) => {
-      startBgm();
-      e.preventDefault();
-      if (gameState !== "running") handlePrimaryAction();
-    }, { passive:false });
+    window.addEventListener("keyup", (e) => { keys[e.code] = false; }, { passive:true });
 
     /**********************
-     * JOYSTICK (touch)
+     * TOUCH CONTROLS (Joystick + Punch)
      **********************/
-    const joystickEl = document.getElementById("joystick");
-    const stickEl = document.getElementById("stick");
+    const touchControlsEl = document.getElementById("touch-controls");
+    const isTouch = window.matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
+    if (isTouch) touchControlsEl.style.display = "flex";
 
-    let joyPointerId = null;
-    let joyCenter = { x: 0, y: 0 };
+    const joyBase = document.getElementById("joy-base");
+    const joyStick = document.getElementById("joy-stick");
+    const punchBtn = document.getElementById("punch");
 
-    function setStickVisual(nx, ny) {
-      const px = nx * joyRadius;
-      const py = ny * joyRadius;
-      stickEl.style.transform = `translate(calc(-50% + ${px}px), calc(-50% + ${py}px))`;
+    // Joystick output in range [-1..1]
+    const joy = { x: 0, y: 0, active: false, id: null, cx: 0, cy: 0, radius: 0 };
+
+    // Make joystick calm + usable
+    const JOY_DEADZONE = 0.30;     // bigger deadzone = less twitchy
+    const JOY_TURN_SCALE = 0.38;   // calmer turning
+    const JOY_MOVE_SCALE = 0.72;   // calmer movement
+    const JOY_CURVE_EXP = 2.2;     // soft near center
+    const JOY_SMOOTH = 14;         // input smoothing
+
+    const joyFiltered = { x: 0, y: 0 };
+
+    function setJoyVisual(nx, ny) {
+      // nx/ny are -1..1 in joy space
+      const r = joy.radius;
+      const px = nx * r;
+      const py = ny * r;
+      joyStick.style.transform = `translate(calc(-50% + ${px}px), calc(-50% + ${py}px))`;
+    }
+    function resetJoy() {
+      joy.x = 0; joy.y = 0; joy.active = false; joy.id = null;
+      setJoyVisual(0, 0);
+    }
+    function curve(v) {
+      const s = Math.sign(v);
+      return s * Math.pow(Math.abs(v), JOY_CURVE_EXP);
     }
 
-    function setJoy(nx, ny) {
-      // clamp
-      const mag = Math.hypot(nx, ny);
-      if (mag > 1) { nx /= mag; ny /= mag; }
+    function onJoyDown(ev) {
+      startBgm();
+      ev.preventDefault();
+      ev.stopPropagation();
 
-      // deadzone
-      const m = Math.hypot(nx, ny);
-      if (m < JOY_DEADZONE) {
+      const rect = joyBase.getBoundingClientRect();
+      joy.cx = rect.left + rect.width / 2;
+      joy.cy = rect.top + rect.height / 2;
+
+      // More travel = less sensitive
+      joy.radius = Math.min(rect.width, rect.height) * 0.32; // ~38px on 118px base
+      joy.active = true;
+      joy.id = ev.pointerId;
+
+      joyBase.setPointerCapture(ev.pointerId);
+      onJoyMove(ev);
+    }
+
+    function onJoyMove(ev) {
+      if (!joy.active || ev.pointerId !== joy.id) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+
+      const dx = ev.clientX - joy.cx;
+      const dy = ev.clientY - joy.cy;
+
+      const dist = Math.hypot(dx, dy) || 1;
+      const max = joy.radius;
+
+      // Clamp within radius
+      const clamped = Math.min(dist, max);
+      const nx = (dx / dist) * (clamped / max);
+      const ny = (dy / dist) * (clamped / max);
+
+      // Deadzone
+      const mag = Math.hypot(nx, ny);
+      if (mag < JOY_DEADZONE) {
         joy.x = 0; joy.y = 0;
-        setStickVisual(0, 0);
+        setJoyVisual(0, 0);
         return;
       }
 
-      // scale out of deadzone
-      const scaled = Math.min(1, (m - JOY_DEADZONE) / (1 - JOY_DEADZONE));
-      const ux = nx / m;
-      const uy = ny / m;
+      // Re-normalize after deadzone so it ramps nicely
+      const t = (mag - JOY_DEADZONE) / (1 - JOY_DEADZONE);
+      const ux = (nx / mag) * t;
+      const uy = (ny / mag) * t;
 
-      // apply non-linear curve
-      joy.x = curve(ux * scaled);
-      joy.y = curve(uy * scaled);
+      // Curve for smoothness near center
+      joy.x = curve(ux);
+      joy.y = curve(uy);
 
-      setStickVisual(joy.x, joy.y);
+      setJoyVisual(ux, uy);
     }
 
-    if (isTouch) {
-      joystickEl.addEventListener("pointerdown", (e) => {
-        startBgm();
-        e.preventDefault();
-        joyPointerId = e.pointerId;
-        joy.active = true;
-
-        const r = joystickEl.getBoundingClientRect();
-        joyCenter.x = r.left + r.width / 2;
-        joyCenter.y = r.top + r.height / 2;
-
-        joystickEl.setPointerCapture(e.pointerId);
-
-        setJoy((e.clientX - joyCenter.x) / joyRadius, (e.clientY - joyCenter.y) / joyRadius);
-      }, { passive:false });
-
-      joystickEl.addEventListener("pointermove", (e) => {
-        if (!joy.active || e.pointerId !== joyPointerId) return;
-        e.preventDefault();
-        setJoy((e.clientX - joyCenter.x) / joyRadius, (e.clientY - joyCenter.y) / joyRadius);
-      }, { passive:false });
-
-      const joyUp = (e) => {
-        if (e.pointerId !== joyPointerId) return;
-        e.preventDefault();
-        joy.active = false;
-        joyPointerId = null;
-        joy.x = 0; joy.y = 0;
-        setStickVisual(0, 0);
-      };
-
-      joystickEl.addEventListener("pointerup", joyUp, { passive:false });
-      joystickEl.addEventListener("pointercancel", joyUp, { passive:false });
+    function onJoyUp(ev) {
+      if (ev.pointerId !== joy.id) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      resetJoy();
     }
 
-    // Punch button (also prevents iOS zoom-jank)
+    joyBase.addEventListener("pointerdown", onJoyDown, { passive:false });
+    joyBase.addEventListener("pointermove", onJoyMove, { passive:false });
+    joyBase.addEventListener("pointerup", onJoyUp, { passive:false });
+    joyBase.addEventListener("pointercancel", onJoyUp, { passive:false });
+
+    // Punch press once (and DO NOT let it bubble to canvas → avoids weird zoom/selection)
     (function bindPunchOnce(){
-      const el = document.getElementById("btn-punch");
       let pressed = false;
 
-      el.addEventListener("pointerdown", (ev) => {
+      punchBtn.addEventListener("pointerdown", (ev) => {
         startBgm();
         ev.preventDefault();
         ev.stopPropagation();
+
         if (pressed) return;
         pressed = true;
+        punchBtn.classList.add("active");
 
         if (gameState === "running") {
           if (!punchState.active) startPunch();
@@ -515,24 +491,48 @@
         ev.preventDefault();
         ev.stopPropagation();
         pressed = false;
+        punchBtn.classList.remove("active");
       };
 
-      el.addEventListener("pointerup", release, { passive:false });
-      el.addEventListener("pointercancel", release, { passive:false });
-      el.addEventListener("pointerleave", release, { passive:false });
+      punchBtn.addEventListener("pointerup", release, { passive:false });
+      punchBtn.addEventListener("pointercancel", release, { passive:false });
+      punchBtn.addEventListener("pointerleave", release, { passive:false });
     })();
+
+    // Tap canvas to advance screens (NOT used for look-drag anymore, avoids twitchy turning)
+    canvas.addEventListener("pointerdown", (e) => {
+      startBgm();
+      e.preventDefault();
+      handlePrimaryAction();
+    }, { passive:false });
+
+    /**********************
+     * PRIMARY ACTION
+     **********************/
+    function handlePrimaryAction() {
+      if (gameState === "running" && !punchState.active) { startPunch(); return; }
+      if (gameState === "title") { gameState = "prescreen"; return; }
+      if (gameState === "prescreen") { startLevel(); return; }
+      if (gameState === "continuePrompt") {
+        if (!continueUsed) { continueUsed = true; startLevel(); }
+        return;
+      }
+      if (gameState === "levelComplete" || gameState === "gameOver") resetGameCompletely();
+    }
 
     /**********************
      * ENEMIES / ITEMS
      **********************/
-    const enemies = [
+    const enemyStartPositions = [
       { x: (6.5)  * TILE_SIZE, y: (3.5)  * TILE_SIZE },
       { x: (22.5) * TILE_SIZE, y: (3.5)  * TILE_SIZE },
       { x: (6.5)  * TILE_SIZE, y: (13.5) * TILE_SIZE },
       { x: (22.5) * TILE_SIZE, y: (13.5) * TILE_SIZE },
       { x: (15.5) * TILE_SIZE, y: (9.5)  * TILE_SIZE }
-    ].map(e => ({
-      ...e,
+    ];
+
+    const enemies = enemyStartPositions.map(p => ({
+      x: p.x, y: p.y,
       alive: true,
       health: 3,
       state: "alive",
@@ -548,7 +548,7 @@
       hitTimer: 0
     }));
 
-    const ENEMY_SPEED = 55;
+    const ENEMY_SPEED = 48; // slightly slower
     const ENEMY_AVOID_RADIUS = 4 * TILE_SIZE;
     const ENEMY_ANIM_FRAME_TIME = 0.16;
 
@@ -560,18 +560,10 @@
         ? "All GPS components recovered!"
         : `GPS components recovered: ${itemsCollected} / ${totalItems}`;
     }
-    updateStatusText();
 
     function resetEnemies() {
-      const positions = [
-        { x: (6.5)  * TILE_SIZE, y: (3.5)  * TILE_SIZE },
-        { x: (22.5) * TILE_SIZE, y: (3.5)  * TILE_SIZE },
-        { x: (6.5)  * TILE_SIZE, y: (13.5) * TILE_SIZE },
-        { x: (22.5) * TILE_SIZE, y: (13.5) * TILE_SIZE },
-        { x: (15.5) * TILE_SIZE, y: (9.5)  * TILE_SIZE }
-      ];
       for (let i = 0; i < enemies.length; i++) {
-        const e = enemies[i], p = positions[i];
+        const e = enemies[i], p = enemyStartPositions[i];
         e.x = p.x; e.y = p.y;
         e.alive = true; e.health = 3; e.state = "alive";
         e.deathTimer = 0; e.finalHitTimer = 0;
@@ -594,6 +586,9 @@
 
       moveVel = 0;
       turnVel = 0;
+      joyFiltered.x = 0;
+      joyFiltered.y = 0;
+      resetJoy();
 
       resetEnemies();
       itemsCollected = 0;
@@ -613,6 +608,9 @@
 
       moveVel = 0;
       turnVel = 0;
+      joyFiltered.x = 0;
+      joyFiltered.y = 0;
+      resetJoy();
 
       gameState = "title";
       updateStatusText();
@@ -658,7 +656,6 @@
         const dy = Math.sin(e.dir) * ENEMY_SPEED * dt;
 
         const oldX = e.x, oldY = e.y;
-
         const nx = e.x + dx;
         const ny = e.y + dy;
 
@@ -704,8 +701,8 @@
       punchState.justHit = false;
 
       if (navigator.vibrate) navigator.vibrate(20);
-      try { punchSound.currentTime = 0; punchSound.play().catch(() => {}); } catch {}
 
+      try { punchSound.currentTime = 0; punchSound.play().catch(() => {}); } catch {}
       performPunch();
     }
 
@@ -743,9 +740,9 @@
 
       if (hitAny) {
         hitMarkerT = 0.15;
-        shakeT = 0.12;
-        shakeMag = 6;
-        hitVignetteT = 0.20;
+        shakeT = 0.10;
+        shakeMag = 5;
+        hitVignetteT = 0.18;
         updateStatusText();
       }
     }
@@ -765,7 +762,7 @@
       let frameIndex = 0;
       if (t > 0.4 && t <= 0.8) frameIndex = 1;
       else if (t > 0.8) frameIndex = 2;
-      return isImgReady(punchImages[frameIndex]) ? punchImages[frameIndex] : null;
+      return punchImages[frameIndex];
     }
 
     /**********************
@@ -806,29 +803,24 @@
     const FLOOR_TEX_WORLD_SCALE = 0.22;
 
     function sampleFloorRGB(wx, wy) {
-      if (!floorTex.ready || !floorTex.data) return [48,48,52];
       const tw = floorTex.w, th = floorTex.h;
-
       let tx = Math.floor(wx * FLOOR_TEX_WORLD_SCALE) % tw;
       let ty = Math.floor(wy * FLOOR_TEX_WORLD_SCALE) % th;
       if (tx < 0) tx += tw;
       if (ty < 0) ty += th;
-
       const idx = (ty * tw + tx) * 4;
       return [ floorTex.data[idx], floorTex.data[idx+1], floorTex.data[idx+2] ];
     }
 
     function renderFloorPerspective(halfH) {
       const w = canvas.width, h = canvas.height;
-
       if (!floorTex.ready || !floorFrame) {
         ctx.fillStyle = "#303033";
         ctx.fillRect(0, halfH, w, halfH);
         return;
       }
 
-      const bw = floorBuf.width;
-      const bh = floorBuf.height;
+      const bw = floorBuf.width, bh = floorBuf.height;
       const data = floorFrame.data;
 
       const leftA  = player.angle - FOV / 2;
@@ -857,20 +849,16 @@
 
         for (let xb = 0; xb < bw; xb++) {
           const [r0,g0,b0] = sampleFloorRGB(fx, fy);
-          const r = Math.floor(r0 * shade);
-          const g = Math.floor(g0 * shade);
-          const b = Math.floor(b0 * shade);
-
           const o = (yb * bw + xb) * 4;
-          data[o] = r; data[o+1] = g; data[o+2] = b; data[o+3] = 255;
-
-          fx += stepX;
-          fy += stepY;
+          data[o]   = Math.floor(r0 * shade);
+          data[o+1] = Math.floor(g0 * shade);
+          data[o+2] = Math.floor(b0 * shade);
+          data[o+3] = 255;
+          fx += stepX; fy += stepY;
         }
       }
 
       floorCtx.putImageData(floorFrame, 0, 0);
-
       ctx.save();
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(floorBuf, 0, 0, bw, bh, 0, halfH, w, h - halfH);
@@ -887,6 +875,7 @@
       img.onload = () => { burglarSprites[name] = img; };
       return img;
     }
+
     loadBurglarSprite("standing","BGStanding.png");
     loadBurglarSprite("walk1","BGWalking1.png");
     loadBurglarSprite("walk2","BGwalking2.png");
@@ -894,29 +883,6 @@
     loadBurglarSprite("hit","BGpunch.png");
     loadBurglarSprite("falling","Falling1.png");
     loadBurglarSprite("dead","Dead.png");
-
-    function chooseBurglarFrame(enemy) {
-      const standing = isImgReady(burglarSprites.standing) ? burglarSprites.standing : null;
-      if (!standing) return null;
-
-      const hit     = isImgReady(burglarSprites.hit)     ? burglarSprites.hit     : null;
-      const falling = isImgReady(burglarSprites.falling) ? burglarSprites.falling : null;
-      const dead    = isImgReady(burglarSprites.dead)    ? burglarSprites.dead    : null;
-      const away    = isImgReady(burglarSprites.away)    ? burglarSprites.away    : null;
-      const walk1   = isImgReady(burglarSprites.walk1)   ? burglarSprites.walk1   : null;
-      const walk2   = isImgReady(burglarSprites.walk2)   ? burglarSprites.walk2   : null;
-
-      if (enemy.state === "finalHit") return hit || standing;
-      if (enemy.state === "dying")    return falling || standing;
-      if (enemy.state === "dead")     return dead || standing;
-      if (enemy.hitTimer > 0)         return hit || standing;
-
-      if (!enemy.moving) return standing;
-      if (enemy.movingAway && away) return away;
-      if (enemy.animFrame === 0 && walk1) return walk1;
-      if (enemy.animFrame === 1 && walk2) return walk2;
-      return standing;
-    }
 
     /**********************
      * HUD ASSETS
@@ -932,9 +898,12 @@
     hud.angryFace = loadImage("Angry face.png");
 
     function areAssetsReady() {
-      if (!isImgReady(screenImages.title) || !isImgReady(screenImages.prescreen)) return false;
-      if (!floorTex.ready) return false;
+      for (const k in screenImages) if (!isImgReady(screenImages[k])) return false;
+      if (!isImgReady(hud.bar)) return false;
+      for (const it of hud.items) if (!isImgReady(it)) return false;
+      if (!isImgReady(hud.happyFace) || !isImgReady(hud.angryFace)) return false;
       if (!isImgReady(burglarSprites.standing)) return false;
+      if (!floorTex.ready) return false;
       return true;
     }
 
@@ -943,7 +912,7 @@
      **********************/
     function castRay(rayAngle) {
       rayAngle = (rayAngle + Math.PI*2) % (Math.PI*2);
-      const sin = Math.sin(rayAngle), cos = Math.cos(rayAngle);
+      const cos = Math.cos(rayAngle), sin = Math.sin(rayAngle);
 
       const stepSize = 4;
       let rayX = player.x, rayY = player.y, distance = 0;
@@ -969,7 +938,67 @@
     }
 
     /**********************
-     * HUD DRAW (unchanged from your version logic)
+     * ENEMY RENDER
+     **********************/
+    function chooseBurglarFrame(enemy) {
+      if (enemy.state === "finalHit" && burglarSprites.hit) return burglarSprites.hit;
+      if (enemy.state === "dying" && burglarSprites.falling) return burglarSprites.falling;
+      if (enemy.state === "dead" && burglarSprites.dead) return burglarSprites.dead;
+      if (enemy.hitTimer > 0 && burglarSprites.hit) return burglarSprites.hit;
+      if (!burglarSprites.standing) return null;
+
+      if (!enemy.moving) return burglarSprites.standing;
+      if (enemy.movingAway && burglarSprites.away) return burglarSprites.away;
+      if (enemy.animFrame === 0 && burglarSprites.walk1) return burglarSprites.walk1;
+      if (enemy.animFrame === 1 && burglarSprites.walk2) return burglarSprites.walk2;
+
+      return burglarSprites.standing;
+    }
+
+    function getVisibleEnemies() {
+      const result = [];
+      for (const enemy of enemies) {
+        const dx = enemy.x - player.x, dy = enemy.y - player.y;
+        const dist = Math.hypot(dx, dy);
+        const angleTo = Math.atan2(dy, dx);
+        const diff = normalizeAngle(angleTo - player.angle);
+        if (Math.abs(diff) > FOV/2) continue;
+        result.push({ enemy, dist, diff });
+      }
+      result.sort((a,b) => b.dist - a.dist);
+      return result;
+    }
+
+    function renderEnemies(halfH) {
+      const visible = getVisibleEnemies();
+      const w = canvas.width;
+
+      for (const obj of visible) {
+        const { enemy, dist, diff } = obj;
+        const screenX = (0.5 + (diff / FOV)) * w;
+        const sprite = chooseBurglarFrame(enemy);
+        if (!sprite) continue;
+
+        const spriteHeight = (TILE_SIZE / dist) * 360;
+        const spriteWidth  = spriteHeight * (sprite.width / sprite.height);
+        const spriteY = halfH - spriteHeight/2 + spriteHeight*0.15;
+        const spriteX = screenX - spriteWidth/2;
+
+        const leftCol  = Math.max(0, Math.floor(spriteX));
+        const rightCol = Math.min(NUM_RAYS - 1, Math.floor(spriteX + spriteWidth));
+        let blocked = true;
+        const correctedEnemyDist = dist * Math.cos(diff);
+        for (let col = leftCol; col <= rightCol; col++) {
+          if (depthBuffer[col] > correctedEnemyDist) { blocked = false; break; }
+        }
+        if (blocked) continue;
+
+        ctx.drawImage(sprite, spriteX, spriteY, spriteWidth, spriteHeight);
+      }
+    }
+
+    /**********************
+     * HUD DRAW (inventory bar)
      **********************/
     function renderHUD() {
       const w = canvas.width, h = canvas.height;
@@ -977,18 +1006,19 @@
       const hudTop = h - hudHeight;
 
       if (isImgReady(hud.bar)) ctx.drawImage(hud.bar, 0, hudTop, w, hudHeight);
-      else { ctx.fillStyle="#222"; ctx.fillRect(0, hudTop, w, hudHeight); }
+      else { ctx.fillStyle = "#222"; ctx.fillRect(0, hudTop, w, hudHeight); }
 
       const columns = 7;
       const colW = w / columns;
       const centerY = hudTop + hudHeight / 2;
 
+      // tribrach + battery smaller
       const ITEM_DRAW = [
-        { scale: 0.50, slot: 0 },
-        { scale: 0.50, slot: 1 },
+        { scale: 0.50, slot: 0 }, // BRX72
+        { scale: 0.50, slot: 1 }, // Data collector
         { scale: 0.30, slot: 2 }, // Tribrach smaller
         { scale: 0.30, slot: 4 }, // Battery smaller
-        { scale: 0.45, slot: 5 }
+        { scale: 0.45, slot: 5 }  // BRX71
       ];
 
       for (let i = 0; i < 5; i++) {
@@ -1010,6 +1040,7 @@
         }
       }
 
+      // face
       let faceImg = null;
       if (punchState.active && punchState.time < punchState.duration * 0.5 && isImgReady(hud.angryFace)) faceImg = hud.angryFace;
       else if (isImgReady(hud.happyFace)) faceImg = hud.happyFace;
@@ -1021,6 +1052,7 @@
         ctx.drawImage(faceImg, cx - iw/2, centerY - ih/2, iw, ih);
       }
 
+      // timer
       const timerX = colW * (6 + 0.5);
       const totalSeconds = Math.max(0, Math.floor(remainingTime));
       const minutes = Math.floor(totalSeconds / 60);
@@ -1035,58 +1067,12 @@
     }
 
     /**********************
-     * ENEMY RENDER
-     **********************/
-    function getVisibleEnemies() {
-      const result = [];
-      for (const enemy of enemies) {
-        const dx = enemy.x - player.x, dy = enemy.y - player.y;
-        const dist = Math.hypot(dx, dy);
-        const angleTo = Math.atan2(dy, dx);
-        const diff = normalizeAngle(angleTo - player.angle);
-        if (Math.abs(diff) > FOV/2) continue;
-        result.push({ enemy, dist, diff });
-      }
-      result.sort((a,b) => b.dist - a.dist);
-      return result;
-    }
-
-    function renderEnemies(halfH) {
-      const visible = getVisibleEnemies();
-      const w = canvas.width;
-
-      for (const obj of visible) {
-        const { enemy, dist, diff } = obj;
-        const sprite = chooseBurglarFrame(enemy);
-        if (!sprite || dist <= 1) continue;
-
-        const screenX = (0.5 + (diff / FOV)) * w;
-
-        const spriteHeight = (TILE_SIZE / dist) * 360;
-        const ratio = sprite.width / sprite.height;
-        if (!Number.isFinite(spriteHeight) || !Number.isFinite(ratio)) continue;
-
-        const spriteWidth  = spriteHeight * ratio;
-        const spriteY = halfH - spriteHeight/2 + spriteHeight*0.15;
-        const spriteX = screenX - spriteWidth/2;
-
-        const leftCol  = Math.max(0, Math.floor(spriteX));
-        const rightCol = Math.min(NUM_RAYS - 1, Math.floor(spriteX + spriteWidth));
-        let blocked = true;
-        const correctedEnemyDist = dist * Math.cos(diff);
-        for (let col = leftCol; col <= rightCol; col++) {
-          if (depthBuffer[col] > correctedEnemyDist) { blocked = false; break; }
-        }
-        if (blocked) continue;
-
-        ctx.drawImage(sprite, spriteX, spriteY, spriteWidth, spriteHeight);
-      }
-    }
-
-    /**********************
-     * UPDATE (with calmer joystick)
+     * UPDATE
      **********************/
     function update(dt) {
+      // Loading state (don’t run logic)
+      if (!areAssetsReady()) return;
+
       if (gameState === "levelCompleteDelay") {
         levelCompleteDelay -= dt;
         if (levelCompleteDelay <= 0) gameState = "levelComplete";
@@ -1105,11 +1091,17 @@
         return;
       }
 
+      // feedback timers
       hitMarkerT = Math.max(0, hitMarkerT - dt);
       shakeT = Math.max(0, shakeT - dt);
       hitVignetteT = Math.max(0, hitVignetteT - dt);
 
-      // Turn input (keyboard + joystick X, scaled down)
+      // Smooth joystick filtering (big reduction in twitch)
+      const a = 1 - Math.exp(-JOY_SMOOTH * dt);
+      joyFiltered.x += (joy.x - joyFiltered.x) * a;
+      joyFiltered.y += (joy.y - joyFiltered.y) * a;
+
+      // Turn input (keyboard + joystick)
       const turnLeft  = keys["ArrowLeft"] || keys["KeyA"];
       const turnRight = keys["ArrowRight"]|| keys["KeyD"];
 
@@ -1117,12 +1109,14 @@
       if (turnLeft) turnInput -= 1;
       if (turnRight) turnInput += 1;
 
-      // joystick turning, MUCH calmer
-      turnInput += (joy.x * JOY_TURN_SCALE);
+      // joystick adds turn (x)
+      turnInput += joyFiltered.x * JOY_TURN_SCALE;
 
+      // Apply accel
       turnVel += turnInput * TURN_ACCEL * dt;
 
-      if (Math.abs(turnInput) < 0.02) {
+      // Damping when no input (or very small joystick)
+      if (Math.abs(turnInput) < 0.03) {
         const drag = TURN_FRICTION * dt;
         if (turnVel > 0) turnVel = Math.max(0, turnVel - drag);
         else turnVel = Math.min(0, turnVel + drag);
@@ -1131,7 +1125,7 @@
       turnVel = Math.max(-TURN_MAX, Math.min(TURN_MAX, turnVel));
       player.angle += turnVel * dt;
 
-      // Move input (keyboard + joystick Y)
+      // Move input (keyboard + joystick)
       const forward = keys["ArrowUp"] || keys["KeyW"];
       const back    = keys["ArrowDown"] || keys["KeyS"];
 
@@ -1139,15 +1133,19 @@
       if (forward) moveInput += 1;
       if (back)    moveInput -= 1;
 
-      // joystick Y: up is negative
-      moveInput += (-joy.y * JOY_MOVE_SCALE);
+      // joystick adds forward/back (negative y = forward)
+      moveInput += (-joyFiltered.y) * JOY_MOVE_SCALE;
+
+      // clamp moveInput to [-1..1]
+      moveInput = Math.max(-1, Math.min(1, moveInput));
 
       moveVel += moveInput * MOVE_ACCEL * dt;
 
-      if (Math.abs(moveInput) < 0.02) {
+      if (Math.abs(moveInput) < 0.03) {
         const drag = MOVE_FRICTION * dt;
         if (moveVel > 0) moveVel = Math.max(0, moveVel - drag);
         else moveVel = Math.min(0, moveVel + drag);
+
       }
 
       moveVel = Math.max(-MOVE_MAX, Math.min(MOVE_MAX, moveVel));
@@ -1161,6 +1159,7 @@
       if (!isSolid(newX, player.y)) player.x = newX;
       if (!isSolid(player.x, newY)) player.y = newY;
 
+      // punch animation timing
       if (punchState.active) {
         punchState.time += dt;
         if (punchState.time >= punchState.duration) {
@@ -1172,6 +1171,7 @@
 
       updateEnemies(dt);
 
+      // timer
       remainingTime -= dt;
       if (remainingTime <= 0) {
         remainingTime = 0;
@@ -1185,6 +1185,7 @@
         }
       }
 
+      // win
       if (itemsCollected >= totalItems && gameState === "running") {
         gameState = "levelCompleteDelay";
         levelCompleteDelay = 2.0;
@@ -1200,21 +1201,25 @@
 
       ctx.clearRect(0, 0, w, h);
 
+      // screen shake
       ctx.save();
       if (shakeT > 0) {
-        const s = (shakeT / 0.12);
+        const s = (shakeT / 0.10);
         const mag = shakeMag * s;
         ctx.translate((Math.random()*2-1)*mag, (Math.random()*2-1)*mag);
       }
 
+      // ceiling
       const ceilingGrad = ctx.createLinearGradient(0, 0, 0, halfH);
       ceilingGrad.addColorStop(0, "#101015");
       ceilingGrad.addColorStop(1, "#181820");
       ctx.fillStyle = ceilingGrad;
       ctx.fillRect(0, 0, w, halfH);
 
+      // floor (perspective)
       renderFloorPerspective(halfH);
 
+      // walls
       for (let i = 0; i < NUM_RAYS; i++) {
         const rayScreenPos = i / NUM_RAYS - 0.5;
         const rayAngle = player.angle + rayScreenPos * FOV;
@@ -1257,10 +1262,12 @@
         ctx.restore();
       }
 
+      // enemies
       renderEnemies(halfH);
 
+      // fist (before HUD)
       const frame = getPunchFrame();
-      if (frame) {
+      if (frame && isImgReady(frame)) {
         const hudHeight = 90;
         const scale = 2.2;
         const imgW = frame.width * scale;
@@ -1270,9 +1277,39 @@
         ctx.drawImage(frame, x, y, imgW, imgH);
       }
 
+      // minimap
+
+      const miniScale = 5, offsetX = 10, offsetY = 10;
+      for (let y = 0; y < MAP_HEIGHT; y++) {
+        for (let x = 0; x < MAP_WIDTH; x++) {
+          const t = tileAt(x, y);
+          ctx.fillStyle = (t === 0) ? "#202020" : "#7a3b2e";
+          ctx.fillRect(offsetX + x * miniScale, offsetY + y * miniScale, miniScale, miniScale);
+        }
+      }
+
+      for (const enemy of enemies) {
+        const ex = offsetX + (enemy.x / TILE_SIZE) * miniScale;
+        const ey = offsetY + (enemy.y / TILE_SIZE) * miniScale;
+        ctx.fillStyle = (enemy.state === "dead" || enemy.state === "dying" || enemy.state === "finalHit") ? "#aa0000" : "#ff4444";
+        ctx.fillRect(ex - 2, ey - 2, 4, 4);
+      }
+
+      const px = offsetX + (player.x / TILE_SIZE) * miniScale;
+      const py = offsetY + (player.y / TILE_SIZE) * miniScale;
+      ctx.fillStyle = "#00ff88";
+      ctx.fillRect(px - 2, py - 2, 4, 4);
+
+      ctx.strokeStyle = "#00ff88";
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(px + Math.cos(player.angle) * 10, py + Math.sin(player.angle) * 10);
+      ctx.stroke();
+
+      // HUD bar
       renderHUD();
 
-      // Crosshair dot
+      // Crosshair (center dot)
       ctx.save();
       ctx.globalAlpha = 0.85;
       ctx.fillStyle = "#ffffff";
@@ -1298,10 +1335,10 @@
         ctx.restore();
       }
 
-      // Vignette
+      // Vignette (time low + hit flash)
       const lowTime = remainingTime <= 15 ? (1 - remainingTime / 15) : 0;
-      const hitFlash = hitVignetteT > 0 ? (hitVignetteT / 0.20) : 0;
-      const vig = Math.min(0.75, lowTime * 0.55 + hitFlash * 0.45);
+      const hitFlash = hitVignetteT > 0 ? (hitVignetteT / 0.18) : 0;
+      const vig = Math.min(0.65, lowTime * 0.45 + hitFlash * 0.35);
 
       if (vig > 0) {
         const g = ctx.createRadialGradient(w/2, h/2, Math.min(w,h)*0.15, w/2, h/2, Math.max(w,h)*0.7);
@@ -1311,7 +1348,7 @@
         ctx.fillRect(0, 0, w, h);
       }
 
-      ctx.restore();
+      ctx.restore(); // end shake
     }
 
     function render() {
@@ -1337,15 +1374,40 @@
     }
 
     /**********************
-     * MAIN LOOP
+     * MAIN LOOP (CRASH-PROOF, but no black flash unless actual error)
      **********************/
     let lastTime = performance.now();
+
     function loop(now) {
       const dt = Math.min(0.05, (now - lastTime) / 1000);
       lastTime = now;
-      try { update(dt); render(); } catch (err) { console.error(err); }
+
+      try {
+        update(dt);
+        render();
+      } catch (err) {
+        console.error(err);
+        // Keep last frame visible, just overlay text (no full black flash)
+        ctx.save();
+        ctx.globalAlpha = 0.75;
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = "#ff7777";
+        ctx.font = "16px monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("Game error, check console (F12).", canvas.width/2, canvas.height/2);
+        ctx.restore();
+      }
+
       requestAnimationFrame(loop);
     }
+
+    /**********************
+     * STARTUP
+     **********************/
+    updateStatusText();
     requestAnimationFrame(loop);
   </script>
 </body>
