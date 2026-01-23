@@ -44,7 +44,7 @@
       margin-top: 8px;
       font-size: 14px;
       color: #bbb;
-      padding-bottom: 120px; /* room for mobile controls */
+      padding-bottom: 120px;
     }
 
     #controls { font-size: 12px; color: #777; }
@@ -57,7 +57,7 @@
       right: 0;
       bottom: 0;
       height: 120px;
-      display: none; /* enabled via JS if touch device */
+      display: none;
       align-items: center;
       justify-content: space-between;
       padding: 14px;
@@ -77,7 +77,6 @@
       -webkit-touch-callout: none;
     }
 
-    /* slightly transparent */
     .btn {
       width: 56px;
       height: 56px;
@@ -148,7 +147,6 @@
     <div id="status"></div>
   </div>
 
-  <!-- Touch controls -->
   <div id="touch-controls" aria-label="Mobile controls">
     <div class="pad">
       <div class="btn" id="btn-left"  title="Turn left">⟵</div>
@@ -164,7 +162,6 @@
     </div>
   </div>
 
-  <!-- background music -->
   <audio id="bgm" src="the-metal-loop-full.wav" loop></audio>
 
   <script>
@@ -186,13 +183,14 @@
     }
 
     function isImgReady(img) {
-      return img && img.complete && img.naturalWidth > 0;
+      return !!(img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0);
     }
 
     function drawFullScreenImage(img) {
       const w = canvas.width, h = canvas.height;
-      if (!img || !img.complete || img.width === 0) {
-        ctx.fillStyle = "#000"; ctx.fillRect(0, 0, w, h);
+      if (!isImgReady(img)) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, w, h);
         return;
       }
       ctx.drawImage(img, 0, 0, w, h);
@@ -201,13 +199,12 @@
     /**********************
      * GAME STATE / SCREENS
      **********************/
-    let gameState = "title"; // title, prescreen, running, continuePrompt, levelCompleteDelay, levelComplete, gameOver
+    let gameState = "title";
     let continueUsed = false;
 
-    const LEVEL_TIME = 120; // 2:00
+    const LEVEL_TIME = 120;
     let remainingTime = LEVEL_TIME;
 
-    // 2s win delay before cutscene
     let levelCompleteDelay = 0;
 
     const screenImages = {
@@ -324,12 +321,10 @@
     const keys = {};
     const vkeys = { left:false, right:false, up:false, down:false };
 
-    // Touch device detection
     const touchControlsEl = document.getElementById("touch-controls");
     const isTouch = window.matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
     if (isTouch) touchControlsEl.style.display = "flex";
 
-    // Floor quality toggle (1 sharp, 2 default, 3 faster)
     let FLOOR_RES = 2;
 
     window.addEventListener("keydown", (e) => {
@@ -360,14 +355,6 @@
       if (gameState === "levelComplete" || gameState === "gameOver") resetGameCompletely();
     }
 
-    // Tap canvas: advance screens / punch
-    canvas.addEventListener("pointerdown", (e) => {
-      startBgm();
-      e.preventDefault();
-      handlePrimaryAction();
-    }, { passive:false });
-
-    // Virtual buttons
     function bindHoldButton(el, onDown, onUp) {
       const pointers = new Set();
 
@@ -397,7 +384,6 @@
     bindHoldButton(document.getElementById("btn-up"),    () => vkeys.up    = true, () => vkeys.up    = false);
     bindHoldButton(document.getElementById("btn-down"),  () => vkeys.down  = true, () => vkeys.down  = false);
 
-    // Punch button: press once
     (function bindPunchOnce(){
       const el = document.getElementById("btn-punch");
       let pressed = false;
@@ -427,17 +413,27 @@
       el.addEventListener("pointerleave", release, { passive:false });
     })();
 
-    // Mobile look: drag-to-turn with deadzone
+    // Mobile drag-to-look with deadzone
     let lookPointerId = null;
     let lookLastX = 0;
     const LOOK_SENS = 0.006;
     const LOOK_DEADZONE = 6;
 
+    // Single pointer handler (prevents double-binding bugs)
     canvas.addEventListener("pointerdown", (e) => {
-      if (!isTouch) return;
-      lookPointerId = e.pointerId;
-      lookLastX = e.clientX;
-    });
+      startBgm();
+      e.preventDefault();
+
+      if (isTouch) {
+        lookPointerId = e.pointerId;
+        lookLastX = e.clientX;
+        // On mobile, tapping canvas during running should punch, but not while dragging.
+        // We only punch if player isn't trying to drag (tiny movement later handled in pointermove).
+        if (gameState !== "running") handlePrimaryAction();
+      } else {
+        handlePrimaryAction();
+      }
+    }, { passive:false });
 
     canvas.addEventListener("pointermove", (e) => {
       if (!isTouch) return;
@@ -451,8 +447,15 @@
       turnVel = Math.max(-TURN_MAX, Math.min(TURN_MAX, turnVel));
     });
 
-    canvas.addEventListener("pointerup", (e) => { if (lookPointerId === e.pointerId) lookPointerId = null; });
-    canvas.addEventListener("pointercancel", (e) => { if (lookPointerId === e.pointerId) lookPointerId = null; });
+    canvas.addEventListener("pointerup", (e) => {
+      if (lookPointerId === e.pointerId) lookPointerId = null;
+      // If it was a quick tap (no real drag), allow punch
+      if (isTouch && gameState === "running") handlePrimaryAction();
+    });
+
+    canvas.addEventListener("pointercancel", (e) => {
+      if (lookPointerId === e.pointerId) lookPointerId = null;
+    });
 
     /**********************
      * ENEMIES / ITEMS
@@ -698,7 +701,7 @@
       let frameIndex = 0;
       if (t > 0.4 && t <= 0.8) frameIndex = 1;
       else if (t > 0.8) frameIndex = 2;
-      return punchImages[frameIndex];
+      return isImgReady(punchImages[frameIndex]) ? punchImages[frameIndex] : null;
     }
 
     /**********************
@@ -711,7 +714,6 @@
       return img;
     });
 
-    // Floor texture
     const floorImg = new Image();
     floorImg.src = "floor 69.jpg";
 
@@ -730,7 +732,6 @@
       floorTex.data = imgd.data;
     };
 
-    // Floor buffer
     const floorBuf = document.createElement("canvas");
     const floorCtx = floorBuf.getContext("2d", { willReadFrequently: true });
     let floorFrame = null;
@@ -745,11 +746,14 @@
     const FLOOR_TEX_WORLD_SCALE = 0.22;
 
     function sampleFloorRGB(wx, wy) {
+      if (!floorTex.ready || !floorTex.data || floorTex.w <= 0 || floorTex.h <= 0) return [48,48,52];
       const tw = floorTex.w, th = floorTex.h;
+
       let tx = Math.floor(wx * FLOOR_TEX_WORLD_SCALE) % tw;
       let ty = Math.floor(wy * FLOOR_TEX_WORLD_SCALE) % th;
       if (tx < 0) tx += tw;
       if (ty < 0) ty += th;
+
       const idx = (ty * tw + tx) * 4;
       return [ floorTex.data[idx], floorTex.data[idx+1], floorTex.data[idx+2] ];
     }
@@ -814,7 +818,7 @@
     }
 
     /**********************
-     * SPRITES
+     * SPRITES (GUARDED)
      **********************/
     const burglarSprites = { standing:null, walk1:null, walk2:null, away:null, hit:null, falling:null, dead:null };
 
@@ -833,6 +837,11 @@
     loadBurglarSprite("falling","Falling1.png");
     loadBurglarSprite("dead","Dead.png");
 
+    function pickReadySprite(...imgs) {
+      for (const img of imgs) if (isImgReady(img)) return img;
+      return null;
+    }
+
     /**********************
      * HUD ASSETS
      **********************/
@@ -847,12 +856,12 @@
     hud.angryFace = loadImage("Angry face.png");
 
     function areAssetsReady() {
-      for (const k in screenImages) if (!isImgReady(screenImages[k])) return false;
+      // Only require the assets needed to show the game without crashing
+      if (!isImgReady(screenImages.title) || !isImgReady(screenImages.prescreen)) return false;
       if (!isImgReady(hud.bar)) return false;
-      for (const it of hud.items) if (!isImgReady(it)) return false;
-      if (!isImgReady(hud.happyFace) || !isImgReady(hud.angryFace)) return false;
-      if (!isImgReady(burglarSprites.standing)) return false;
       if (!floorTex.ready) return false;
+      // Standing sprite is required, others can stream in safely now
+      if (!isImgReady(burglarSprites.standing)) return false;
       return true;
     }
 
@@ -887,7 +896,7 @@
     }
 
     /**********************
-     * ENEMY RENDER
+     * ENEMY RENDER (SAFE)
      **********************/
     function getVisibleEnemies() {
       const result = [];
@@ -904,18 +913,28 @@
     }
 
     function chooseBurglarFrame(enemy) {
-      if (enemy.state === "finalHit" && burglarSprites.hit) return burglarSprites.hit;
-      if (enemy.state === "dying" && burglarSprites.falling) return burglarSprites.falling;
-      if (enemy.state === "dead" && burglarSprites.dead) return burglarSprites.dead;
-      if (enemy.hitTimer > 0 && burglarSprites.hit) return burglarSprites.hit;
-      if (!burglarSprites.standing) return null;
+      // Only return sprites that are actually loaded
+      const standing = isImgReady(burglarSprites.standing) ? burglarSprites.standing : null;
+      if (!standing) return null;
 
-      if (!enemy.moving) return burglarSprites.standing;
-      if (enemy.movingAway && burglarSprites.away) return burglarSprites.away;
-      if (enemy.animFrame === 0 && burglarSprites.walk1) return burglarSprites.walk1;
-      if (enemy.animFrame === 1 && burglarSprites.walk2) return burglarSprites.walk2;
+      const hit     = isImgReady(burglarSprites.hit)     ? burglarSprites.hit     : null;
+      const falling = isImgReady(burglarSprites.falling) ? burglarSprites.falling : null;
+      const dead    = isImgReady(burglarSprites.dead)    ? burglarSprites.dead    : null;
+      const away    = isImgReady(burglarSprites.away)    ? burglarSprites.away    : null;
+      const walk1   = isImgReady(burglarSprites.walk1)   ? burglarSprites.walk1   : null;
+      const walk2   = isImgReady(burglarSprites.walk2)   ? burglarSprites.walk2   : null;
 
-      return burglarSprites.standing;
+      if (enemy.state === "finalHit") return hit || standing;
+      if (enemy.state === "dying")    return falling || standing;
+      if (enemy.state === "dead")     return dead || standing;
+      if (enemy.hitTimer > 0)         return hit || standing;
+
+      if (!enemy.moving) return standing;
+      if (enemy.movingAway && away) return away;
+      if (enemy.animFrame === 0 && walk1) return walk1;
+      if (enemy.animFrame === 1 && walk2) return walk2;
+
+      return standing;
     }
 
     function renderEnemies(halfH) {
@@ -924,16 +943,19 @@
 
       for (const obj of visible) {
         const { enemy, dist, diff } = obj;
-        const screenX = (0.5 + (diff / FOV)) * w;
         const sprite = chooseBurglarFrame(enemy);
-        if (!sprite) continue;
+        if (!sprite || dist <= 1) continue;
+
+        const screenX = (0.5 + (diff / FOV)) * w;
 
         const spriteHeight = (TILE_SIZE / dist) * 360;
-        const spriteWidth  = spriteHeight * (sprite.width / sprite.height);
+        const ratio = sprite.width / sprite.height;
+        if (!Number.isFinite(spriteHeight) || !Number.isFinite(ratio)) continue;
+
+        const spriteWidth  = spriteHeight * ratio;
         const spriteY = halfH - spriteHeight/2 + spriteHeight*0.15;
         const spriteX = screenX - spriteWidth/2;
 
-        // occlusion test
         const leftCol  = Math.max(0, Math.floor(spriteX));
         const rightCol = Math.min(NUM_RAYS - 1, Math.floor(spriteX + spriteWidth));
         let blocked = true;
@@ -955,9 +977,8 @@
       const hudHeight = 90;
       const hudTop = h - hudHeight;
 
-      if (hud.bar && hud.bar.complete && hud.bar.width > 0) {
-        ctx.drawImage(hud.bar, 0, hudTop, w, hudHeight);
-      } else {
+      if (isImgReady(hud.bar)) ctx.drawImage(hud.bar, 0, hudTop, w, hudHeight);
+      else {
         ctx.fillStyle = "#222";
         ctx.fillRect(0, hudTop, w, hudHeight);
       }
@@ -968,15 +989,15 @@
 
       // tribrach + battery smaller
       const ITEM_DRAW = [
-        { scale: 0.50, slot: 0 }, // BRX72.png
-        { scale: 0.50, slot: 1 }, // Data collector copy.png
-        { scale: 0.30, slot: 2 }, // Tribrachs.png
-        { scale: 0.30, slot: 4 }, // battery copy.png
-        { scale: 0.45, slot: 5 }  // BRX71.png
+        { scale: 0.50, slot: 0 },
+        { scale: 0.50, slot: 1 },
+        { scale: 0.30, slot: 2 }, // Tribrachs.png smaller
+        { scale: 0.30, slot: 4 }, // battery copy.png smaller
+        { scale: 0.45, slot: 5 }
       ];
 
       for (let i = 0; i < 5; i++) {
-        if (itemsCollected > i && hud.items[i] && hud.items[i].complete) {
+        if (itemsCollected > i && isImgReady(hud.items[i])) {
           const img = hud.items[i];
           const cfg = ITEM_DRAW[i];
 
@@ -997,9 +1018,9 @@
 
       // face
       let faceImg = null;
-      if (punchState.active && punchState.time < punchState.duration * 0.5 && hud.angryFace && hud.angryFace.complete) {
+      if (punchState.active && punchState.time < punchState.duration * 0.5 && isImgReady(hud.angryFace)) {
         faceImg = hud.angryFace;
-      } else if (hud.happyFace && hud.happyFace.complete) {
+      } else if (isImgReady(hud.happyFace)) {
         faceImg = hud.happyFace;
       }
 
@@ -1046,12 +1067,10 @@
         return;
       }
 
-      // tick feedback timers
       hitMarkerT = Math.max(0, hitMarkerT - dt);
       shakeT = Math.max(0, shakeT - dt);
       hitVignetteT = Math.max(0, hitVignetteT - dt);
 
-      // Smooth turn
       const turnLeft  = keys["ArrowLeft"] || keys["KeyA"] || vkeys.left;
       const turnRight = keys["ArrowRight"]|| keys["KeyD"] || vkeys.right;
 
@@ -1070,7 +1089,6 @@
       turnVel = Math.max(-TURN_MAX, Math.min(TURN_MAX, turnVel));
       player.angle += turnVel * dt;
 
-      // Smooth move
       const forward = keys["ArrowUp"] || keys["KeyW"] || vkeys.up;
       const back    = keys["ArrowDown"] || keys["KeyS"] || vkeys.down;
 
@@ -1097,7 +1115,6 @@
       if (!isSolid(newX, player.y)) player.x = newX;
       if (!isSolid(player.x, newY)) player.y = newY;
 
-      // punch animation timing
       if (punchState.active) {
         punchState.time += dt;
         if (punchState.time >= punchState.duration) {
@@ -1109,7 +1126,6 @@
 
       updateEnemies(dt);
 
-      // timer
       remainingTime -= dt;
       if (remainingTime <= 0) {
         remainingTime = 0;
@@ -1123,7 +1139,6 @@
         }
       }
 
-      // win
       if (itemsCollected >= totalItems && gameState === "running") {
         gameState = "levelCompleteDelay";
         levelCompleteDelay = 2.0;
@@ -1139,7 +1154,6 @@
 
       ctx.clearRect(0, 0, w, h);
 
-      // shake
       ctx.save();
       if (shakeT > 0) {
         const s = (shakeT / 0.12);
@@ -1147,17 +1161,14 @@
         ctx.translate((Math.random()*2-1)*mag, (Math.random()*2-1)*mag);
       }
 
-      // ceiling
       const ceilingGrad = ctx.createLinearGradient(0, 0, 0, halfH);
       ceilingGrad.addColorStop(0, "#101015");
       ceilingGrad.addColorStop(1, "#181820");
       ctx.fillStyle = ceilingGrad;
       ctx.fillRect(0, 0, w, halfH);
 
-      // floor
       renderFloorPerspective(halfH);
 
-      // walls
       for (let i = 0; i < NUM_RAYS; i++) {
         const rayScreenPos = i / NUM_RAYS - 0.5;
         const rayAngle = player.angle + rayScreenPos * FOV;
@@ -1175,7 +1186,7 @@
         const texIndex = ((hitMapX + hitMapY) % wallTextures.length + wallTextures.length) % wallTextures.length;
         const tex = wallTextures[texIndex];
 
-        if (tex && tex.complete && tex.width > 0) {
+        if (isImgReady(tex)) {
           const texW = tex.width, texH = tex.height;
 
           const hitXmod = ((worldX % TILE_SIZE) + TILE_SIZE) % TILE_SIZE;
@@ -1200,10 +1211,8 @@
         ctx.restore();
       }
 
-      // enemies
       renderEnemies(halfH);
 
-      // fist (before HUD)
       const frame = getPunchFrame();
       if (frame) {
         const hudHeight = 90;
@@ -1243,10 +1252,9 @@
       ctx.lineTo(px + Math.cos(player.angle) * 10, py + Math.sin(player.angle) * 10);
       ctx.stroke();
 
-      // HUD
       renderHUD();
 
-      // Crosshair
+      // crosshair
       ctx.save();
       ctx.globalAlpha = 0.85;
       ctx.fillStyle = "#ffffff";
@@ -1255,7 +1263,7 @@
       ctx.fill();
       ctx.restore();
 
-      // Hit marker X
+      // hit marker
       if (hitMarkerT > 0) {
         const a = hitMarkerT / 0.15;
         const size = 10;
@@ -1272,7 +1280,6 @@
         ctx.restore();
       }
 
-      // Vignette (time low + hit flash)
       const lowTime = remainingTime <= 15 ? (1 - remainingTime / 15) : 0;
       const hitFlash = hitVignetteT > 0 ? (hitVignetteT / 0.20) : 0;
       const vig = Math.min(0.75, lowTime * 0.55 + hitFlash * 0.45);
@@ -1285,11 +1292,10 @@
         ctx.fillRect(0, 0, w, h);
       }
 
-      ctx.restore(); // end shake
+      ctx.restore(); // shake end
     }
 
     function render() {
-      // Loading screen
       if (!areAssetsReady()) {
         ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1312,9 +1318,10 @@
     }
 
     /**********************
-     * MAIN LOOP (CRASH-PROOF)
+     * MAIN LOOP (NO BLACK FLASH)
      **********************/
     let lastTime = performance.now();
+    let errorToastT = 0;
 
     function loop(now) {
       const dt = Math.min(0.05, (now - lastTime) / 1000);
@@ -1325,13 +1332,22 @@
         render();
       } catch (err) {
         console.error(err);
-        ctx.fillStyle = "#000";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#ff5555";
-        ctx.font = "16px monospace";
-        ctx.textAlign = "center";
+        // no screen wipe
+        errorToastT = 1.2;
+      }
+
+      if (errorToastT > 0) {
+        errorToastT -= dt;
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, errorToastT);
+        ctx.fillStyle = "rgba(0,0,0,0.35)";
+        ctx.fillRect(10, 10, 260, 34);
+        ctx.fillStyle = "#ffb3b3";
+        ctx.font = "14px system-ui";
+        ctx.textAlign = "left";
         ctx.textBaseline = "middle";
-        ctx.fillText("Game error, check console (F12).", canvas.width/2, canvas.height/2);
+        ctx.fillText("Minor error, still running…", 18, 27);
+        ctx.restore();
       }
 
       requestAnimationFrame(loop);
