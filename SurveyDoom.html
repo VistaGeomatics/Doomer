@@ -17,7 +17,7 @@
       align-items: center;
       justify-content: flex-start;
       min-height: 100vh;
-      touch-action: none; /* helps reduce scroll/pinch conflicts */
+      touch-action: none;
     }
 
     #game-container { margin-top: 10px; }
@@ -62,7 +62,7 @@
       justify-content: space-between;
       padding: 14px;
       z-index: 50;
-      pointer-events: none; /* buttons will re-enable pointer events */
+      pointer-events: none;
       background: linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0));
     }
 
@@ -77,7 +77,7 @@
       -webkit-touch-callout: none;
     }
 
-    /* slightly more transparent = more premium */
+    /* slightly transparent */
     .btn {
       width: 56px;
       height: 56px;
@@ -168,6 +168,9 @@
   <audio id="bgm" src="the-metal-loop-full.wav" loop></audio>
 
   <script>
+    /**********************
+     * BASIC SETUP
+     **********************/
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
     const statusEl = document.getElementById("status");
@@ -176,47 +179,15 @@
     canvas.width = 960;
     canvas.height = 540;
 
-    // ------------ GAME STATE / SCREENS -------------
-    let gameState = "title";
-    let continueUsed = false;
-
-    const LEVEL_TIME = 120; // 2:00
-    let remainingTime = LEVEL_TIME;
-
-    // Win delay (2 seconds before final cut scene)
-    let levelCompleteDelay = 0;
-
-    // ------------ SCREEN FEEDBACK (hit marker, shake, vignette) -------------
-    let hitMarkerT = 0;     // seconds left to show hit marker
-    let shakeT = 0;         // seconds left of shake
-    let shakeMag = 0;       // pixels
-    let hitVignetteT = 0;   // seconds left for hit vignette flash
-
-    // ------------ MOVEMENT SMOOTHING -------------
-    let moveVel = 0; // forward/back velocity
-    let turnVel = 0; // angular velocity
-
-    const MOVE_ACCEL = 900;
-    const MOVE_FRICTION = 1200;
-    const MOVE_MAX = 170;
-
-    const TURN_ACCEL = 10.0;
-    const TURN_FRICTION = 14.0;
-    const TURN_MAX = 2.8;
-
     function loadImage(path) {
       const img = new Image();
       img.src = path;
       return img;
     }
 
-    const screenImages = {
-      title: loadImage("Level3.png"),
-      prescreen: loadImage("Prescreen.png"),
-      complete: loadImage("level complete.png"),
-      gameover: loadImage("Fail.png"),
-      continue: loadImage("Continue.png")
-    };
+    function isImgReady(img) {
+      return img && img.complete && img.naturalWidth > 0;
+    }
 
     function drawFullScreenImage(img) {
       const w = canvas.width, h = canvas.height;
@@ -227,34 +198,65 @@
       ctx.drawImage(img, 0, 0, w, h);
     }
 
-    // ------------ MUSIC / SFX -------------
+    /**********************
+     * GAME STATE / SCREENS
+     **********************/
+    let gameState = "title"; // title, prescreen, running, continuePrompt, levelCompleteDelay, levelComplete, gameOver
+    let continueUsed = false;
+
+    const LEVEL_TIME = 120; // 2:00
+    let remainingTime = LEVEL_TIME;
+
+    // 2s win delay before cutscene
+    let levelCompleteDelay = 0;
+
+    const screenImages = {
+      title: loadImage("Level3.png"),
+      prescreen: loadImage("Prescreen.png"),
+      complete: loadImage("level complete.png"),
+      gameover: loadImage("Fail.png"),
+      continue: loadImage("Continue.png")
+    };
+
+    /**********************
+     * MUSIC / SFX
+     **********************/
     let bgmStarted = false;
-
-    function safePlay(a) { try { a.play().catch(()=>{}); } catch {} }
-
-    // Optional extra layers (add these files if you want the effects):
-    const footsteps = new Audio("Footsteps.wav");
-    footsteps.loop = true;
-    footsteps.volume = 0;
-
-    const enemyHum = new Audio("EnemyNearby.wav");
-    enemyHum.loop = true;
-    enemyHum.volume = 0;
-
     function startBgm() {
       if (bgmStarted || !bgm) return;
       bgm.volume = 0.3;
       bgm.play().catch(() => {});
-      // start layers (will just fail silently if files missing)
-      safePlay(footsteps);
-      safePlay(enemyHum);
       bgmStarted = true;
     }
 
     const punchSound = new Audio("Punch.wav");
     punchSound.volume = 1.0;
 
-    // ------------ MAP -------------
+    /**********************
+     * SCREEN FEEDBACK
+     **********************/
+    let hitMarkerT = 0;
+    let shakeT = 0;
+    let shakeMag = 0;
+    let hitVignetteT = 0;
+
+    /**********************
+     * MOVEMENT SMOOTHING
+     **********************/
+    let moveVel = 0;
+    let turnVel = 0;
+
+    const MOVE_ACCEL = 900;
+    const MOVE_FRICTION = 1200;
+    const MOVE_MAX = 170;
+
+    const TURN_ACCEL = 10.0;
+    const TURN_FRICTION = 14.0;
+    const TURN_MAX = 2.8;
+
+    /**********************
+     * MAP
+     **********************/
     const asciiMap = [
       "################################",
       "#...............##............#",
@@ -288,7 +290,20 @@
 
     const TILE_SIZE = 64;
 
-    // ------------ PLAYER -------------
+    function tileAt(tx, ty) {
+      if (tx < 0 || tx >= MAP_WIDTH || ty < 0 || ty >= MAP_HEIGHT) return 1;
+      return map[ty][tx];
+    }
+
+    function isSolid(px, py) {
+      const tx = Math.floor(px / TILE_SIZE);
+      const ty = Math.floor(py / TILE_SIZE);
+      return tileAt(tx, ty) !== 0;
+    }
+
+    /**********************
+     * PLAYER
+     **********************/
     let spawnX = 1.5, spawnY = 1.5;
     for (let y = 0; y < MAP_HEIGHT; y++) {
       for (let x = 0; x < MAP_WIDTH; x++) {
@@ -303,21 +318,27 @@
     const MAX_DEPTH = 18 * TILE_SIZE;
     const depthBuffer = new Array(NUM_RAYS);
 
-    // ------------ INPUT (Keyboard + Touch virtual keys) -------------
-    const keys = {}; // keyboard
-    const vkeys = { left:false, right:false, up:false, down:false, punch:false }; // virtual
+    /**********************
+     * INPUT (keyboard + touch)
+     **********************/
+    const keys = {};
+    const vkeys = { left:false, right:false, up:false, down:false };
 
-    // Floor quality toggle
-    let FLOOR_RES = 2; // 1 = sharp, 2 = default, 3 = faster
+    // Touch device detection
+    const touchControlsEl = document.getElementById("touch-controls");
+    const isTouch = window.matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
+    if (isTouch) touchControlsEl.style.display = "flex";
 
-    window.addEventListener("keydown", e => {
+    // Floor quality toggle (1 sharp, 2 default, 3 faster)
+    let FLOOR_RES = 2;
+
+    window.addEventListener("keydown", (e) => {
       startBgm();
 
       if (!keys[e.code]) {
         if (e.code === "Space") handlePrimaryAction();
       }
 
-      // Q toggles floor buffer resolution
       if (e.code === "KeyQ") {
         FLOOR_RES = (FLOOR_RES === 1) ? 2 : (FLOOR_RES === 2) ? 3 : 1;
         rebuildFloorBuffer();
@@ -325,33 +346,28 @@
 
       keys[e.code] = true;
     });
-    window.addEventListener("keyup", e => { keys[e.code] = false; });
 
-    // Primary action for screens
+    window.addEventListener("keyup", (e) => { keys[e.code] = false; });
+
     function handlePrimaryAction() {
-      if (gameState === "running" && !punchState.active) {
-        startPunch();
-        return;
-      }
+      if (gameState === "running" && !punchState.active) { startPunch(); return; }
       if (gameState === "title") { gameState = "prescreen"; return; }
       if (gameState === "prescreen") { startLevel(); return; }
       if (gameState === "continuePrompt") {
         if (!continueUsed) { continueUsed = true; startLevel(); }
         return;
       }
-      if (gameState === "levelComplete" || gameState === "gameOver") {
-        resetGameCompletely();
-      }
+      if (gameState === "levelComplete" || gameState === "gameOver") resetGameCompletely();
     }
 
-    // enable touch controls on touch devices (more reliable on iPad)
-    const touchControlsEl = document.getElementById("touch-controls");
-    const isTouch =
-      window.matchMedia("(pointer:coarse)").matches ||
-      navigator.maxTouchPoints > 0;
-    if (isTouch) touchControlsEl.style.display = "flex";
+    // Tap canvas: advance screens / punch
+    canvas.addEventListener("pointerdown", (e) => {
+      startBgm();
+      e.preventDefault();
+      handlePrimaryAction();
+    }, { passive:false });
 
-    // helper to bind press/hold buttons with multi-touch support
+    // Virtual buttons
     function bindHoldButton(el, onDown, onUp) {
       const pointers = new Set();
 
@@ -376,28 +392,12 @@
       el.addEventListener("pointerleave", up, { passive:false });
     }
 
-    // Map buttons to vkeys
-    bindHoldButton(document.getElementById("btn-left"),
-      () => vkeys.left = true,
-      () => vkeys.left = false
-    );
+    bindHoldButton(document.getElementById("btn-left"),  () => vkeys.left  = true, () => vkeys.left  = false);
+    bindHoldButton(document.getElementById("btn-right"), () => vkeys.right = true, () => vkeys.right = false);
+    bindHoldButton(document.getElementById("btn-up"),    () => vkeys.up    = true, () => vkeys.up    = false);
+    bindHoldButton(document.getElementById("btn-down"),  () => vkeys.down  = true, () => vkeys.down  = false);
 
-    bindHoldButton(document.getElementById("btn-right"),
-      () => vkeys.right = true,
-      () => vkeys.right = false
-    );
-
-    bindHoldButton(document.getElementById("btn-up"),
-      () => vkeys.up = true,
-      () => vkeys.up = false
-    );
-
-    bindHoldButton(document.getElementById("btn-down"),
-      () => vkeys.down = true,
-      () => vkeys.down = false
-    );
-
-    // Punch should trigger once per press (not continuous)
+    // Punch button: press once
     (function bindPunchOnce(){
       const el = document.getElementById("btn-punch");
       let pressed = false;
@@ -427,29 +427,11 @@
       el.addEventListener("pointerleave", release, { passive:false });
     })();
 
-    // Tap canvas to advance screens / punch
-    canvas.addEventListener("pointerdown", (e) => {
-      startBgm();
-      e.preventDefault();
-      handlePrimaryAction();
-    }, { passive:false });
-
-    function tileAt(tx, ty) {
-      if (tx < 0 || tx >= MAP_WIDTH || ty < 0 || ty >= MAP_HEIGHT) return 1;
-      return map[ty][tx];
-    }
-
-    function isSolid(px, py) {
-      const tx = Math.floor(px / TILE_SIZE);
-      const ty = Math.floor(py / TILE_SIZE);
-      return tileAt(tx, ty) !== 0;
-    }
-
-    // ------------ MOBILE LOOK (drag to turn with deadzone) -------------
+    // Mobile look: drag-to-turn with deadzone
     let lookPointerId = null;
     let lookLastX = 0;
-    const LOOK_SENS = 0.006;  // turn speed per pixel
-    const LOOK_DEADZONE = 6;  // pixels
+    const LOOK_SENS = 0.006;
+    const LOOK_DEADZONE = 6;
 
     canvas.addEventListener("pointerdown", (e) => {
       if (!isTouch) return;
@@ -463,22 +445,18 @@
 
       const dx = e.clientX - lookLastX;
       lookLastX = e.clientX;
-
       if (Math.abs(dx) < LOOK_DEADZONE) return;
 
-      // inject into turnVel so it blends with smoothing
       turnVel += dx * LOOK_SENS;
       turnVel = Math.max(-TURN_MAX, Math.min(TURN_MAX, turnVel));
     });
 
-    canvas.addEventListener("pointerup", (e) => {
-      if (lookPointerId === e.pointerId) lookPointerId = null;
-    });
-    canvas.addEventListener("pointercancel", (e) => {
-      if (lookPointerId === e.pointerId) lookPointerId = null;
-    });
+    canvas.addEventListener("pointerup", (e) => { if (lookPointerId === e.pointerId) lookPointerId = null; });
+    canvas.addEventListener("pointercancel", (e) => { if (lookPointerId === e.pointerId) lookPointerId = null; });
 
-    // ------------ ENEMIES / GPS THIEVES -------------
+    /**********************
+     * ENEMIES / ITEMS
+     **********************/
     const enemies = [
       { x: (6.5)  * TILE_SIZE, y: (3.5)  * TILE_SIZE },
       { x: (22.5) * TILE_SIZE, y: (3.5)  * TILE_SIZE },
@@ -510,11 +488,9 @@
     const totalItems = enemies.length;
 
     function updateStatusText() {
-      if (itemsCollected >= totalItems) {
-        statusEl.textContent = "All GPS components recovered!";
-      } else {
-        statusEl.textContent = `GPS components recovered: ${itemsCollected} / ${totalItems}`;
-      }
+      statusEl.textContent = (itemsCollected >= totalItems)
+        ? "All GPS components recovered!"
+        : `GPS components recovered: ${itemsCollected} / ${totalItems}`;
     }
     updateStatusText();
 
@@ -641,7 +617,9 @@
       }
     }
 
-    // ------------ PUNCH -------------
+    /**********************
+     * PUNCH
+     **********************/
     const punchState = { active:false, time:0, duration:0.25, justHit:false };
     const PUNCH_RANGE = 1.5 * TILE_SIZE;
     const PUNCH_ARC   = Math.PI / 4;
@@ -666,6 +644,7 @@
 
     function performPunch() {
       let hitAny = false;
+
       for (const enemy of enemies) {
         if (enemy.state !== "alive") continue;
 
@@ -689,18 +668,17 @@
           enemy.hitTimer = 0;
           itemsCollected++;
         }
+
         hitAny = true;
       }
 
       punchState.justHit = hitAny;
 
       if (hitAny) {
-        // feedback
         hitMarkerT = 0.15;
         shakeT = 0.12;
         shakeMag = 6;
         hitVignetteT = 0.20;
-
         updateStatusText();
       }
     }
@@ -723,26 +701,21 @@
       return punchImages[frameIndex];
     }
 
-    // ------------ TEXTURES -------------
+    /**********************
+     * TEXTURES
+     **********************/
     const wallTextureFiles = ["Wall1.png", "Wall2.png", "wall3.png"];
-    const wallTextures = [];
-    wallTextureFiles.forEach((file, idx) => {
+    const wallTextures = wallTextureFiles.map(f => {
       const img = new Image();
-      img.src = file;
-      wallTextures[idx] = img;
+      img.src = f;
+      return img;
     });
 
-    // Floor texture (perspective)
+    // Floor texture
     const floorImg = new Image();
     floorImg.src = "floor 69.jpg";
 
-    // We sample the floor texture manually for perspective, so cache its pixel data:
-    const floorTex = {
-      ready: false,
-      w: 0,
-      h: 0,
-      data: null
-    };
+    const floorTex = { ready:false, w:0, h:0, data:null };
 
     floorImg.onload = () => {
       const c = document.createElement("canvas");
@@ -757,7 +730,7 @@
       floorTex.data = imgd.data;
     };
 
-    // Offscreen buffer for floor (lower res for speed, then scaled up)
+    // Floor buffer
     const floorBuf = document.createElement("canvas");
     const floorCtx = floorBuf.getContext("2d", { willReadFrequently: true });
     let floorFrame = null;
@@ -769,7 +742,6 @@
     }
     rebuildFloorBuffer();
 
-    // Smaller value => smaller tiles (more repeats) => less “blocky”
     const FLOOR_TEX_WORLD_SCALE = 0.22;
 
     function sampleFloorRGB(wx, wy) {
@@ -779,11 +751,7 @@
       if (tx < 0) tx += tw;
       if (ty < 0) ty += th;
       const idx = (ty * tw + tx) * 4;
-      return [
-        floorTex.data[idx],
-        floorTex.data[idx + 1],
-        floorTex.data[idx + 2]
-      ];
+      return [ floorTex.data[idx], floorTex.data[idx+1], floorTex.data[idx+2] ];
     }
 
     function renderFloorPerspective(halfH) {
@@ -824,17 +792,13 @@
         const shade = Math.max(0.15, 1 - (rowDist / (MAX_DEPTH * 0.9)));
 
         for (let xb = 0; xb < bw; xb++) {
-          const [r0, g0, b0] = sampleFloorRGB(fx, fy);
-
+          const [r0,g0,b0] = sampleFloorRGB(fx, fy);
           const r = Math.floor(r0 * shade);
           const g = Math.floor(g0 * shade);
           const b = Math.floor(b0 * shade);
 
           const o = (yb * bw + xb) * 4;
-          data[o] = r;
-          data[o + 1] = g;
-          data[o + 2] = b;
-          data[o + 3] = 255;
+          data[o] = r; data[o+1] = g; data[o+2] = b; data[o+3] = 255;
 
           fx += stepX;
           fy += stepY;
@@ -845,15 +809,13 @@
 
       ctx.save();
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(
-        floorBuf,
-        0, 0, bw, bh,
-        0, halfH, w, h - halfH
-      );
+      ctx.drawImage(floorBuf, 0, 0, bw, bh, 0, halfH, w, h - halfH);
       ctx.restore();
     }
 
-    // ------------ BURGLAR SPRITES -------------
+    /**********************
+     * SPRITES
+     **********************/
     const burglarSprites = { standing:null, walk1:null, walk2:null, away:null, hit:null, falling:null, dead:null };
 
     function loadBurglarSprite(name, file) {
@@ -862,6 +824,7 @@
       img.onload = () => { burglarSprites[name] = img; };
       return img;
     }
+
     loadBurglarSprite("standing","BGStanding.png");
     loadBurglarSprite("walk1","BGWalking1.png");
     loadBurglarSprite("walk2","BGwalking2.png");
@@ -870,7 +833,9 @@
     loadBurglarSprite("falling","Falling1.png");
     loadBurglarSprite("dead","Dead.png");
 
-    // ------------ HUD -------------
+    /**********************
+     * HUD ASSETS
+     **********************/
     const hud = { bar:null, items:[], happyFace:null, angryFace:null };
     hud.bar = loadImage("Bar.png");
     hud.items[0] = loadImage("BRX72.png");
@@ -881,11 +846,6 @@
     hud.happyFace = loadImage("Happy Face.png");
     hud.angryFace = loadImage("Angry face.png");
 
-    // ------------ LOADING / PRELOAD CHECK -------------
-    function isImgReady(img) {
-      return img && img.complete && img.naturalWidth > 0;
-    }
-
     function areAssetsReady() {
       for (const k in screenImages) if (!isImgReady(screenImages[k])) return false;
       if (!isImgReady(hud.bar)) return false;
@@ -893,11 +853,12 @@
       if (!isImgReady(hud.happyFace) || !isImgReady(hud.angryFace)) return false;
       if (!isImgReady(burglarSprites.standing)) return false;
       if (!floorTex.ready) return false;
-      // wall textures can load a bit later, not critical
       return true;
     }
 
-    // ------------ RAYCAST -------------
+    /**********************
+     * RAYCAST
+     **********************/
     function castRay(rayAngle) {
       rayAngle = (rayAngle + Math.PI*2) % (Math.PI*2);
       const sin = Math.sin(rayAngle), cos = Math.cos(rayAngle);
@@ -925,7 +886,9 @@
       return { distance, tile: hitTile, hitMapX, hitMapY, worldX: rayX, worldY: rayY };
     }
 
-    // ------------ ENEMY RENDER -------------
+    /**********************
+     * ENEMY RENDER
+     **********************/
     function getVisibleEnemies() {
       const result = [];
       for (const enemy of enemies) {
@@ -946,10 +909,12 @@
       if (enemy.state === "dead" && burglarSprites.dead) return burglarSprites.dead;
       if (enemy.hitTimer > 0 && burglarSprites.hit) return burglarSprites.hit;
       if (!burglarSprites.standing) return null;
+
       if (!enemy.moving) return burglarSprites.standing;
       if (enemy.movingAway && burglarSprites.away) return burglarSprites.away;
       if (enemy.animFrame === 0 && burglarSprites.walk1) return burglarSprites.walk1;
       if (enemy.animFrame === 1 && burglarSprites.walk2) return burglarSprites.walk2;
+
       return burglarSprites.standing;
     }
 
@@ -968,6 +933,7 @@
         const spriteY = halfH - spriteHeight/2 + spriteHeight*0.15;
         const spriteX = screenX - spriteWidth/2;
 
+        // occlusion test
         const leftCol  = Math.max(0, Math.floor(spriteX));
         const rightCol = Math.min(NUM_RAYS - 1, Math.floor(spriteX + spriteWidth));
         let blocked = true;
@@ -981,7 +947,9 @@
       }
     }
 
-    // ------------ HUD DRAW -------------
+    /**********************
+     * HUD DRAW
+     **********************/
     function renderHUD() {
       const w = canvas.width, h = canvas.height;
       const hudHeight = 90;
@@ -998,12 +966,12 @@
       const colW = w / columns;
       const centerY = hudTop + hudHeight / 2;
 
-      // Per-item draw settings (tribrach + battery smaller)
+      // tribrach + battery smaller
       const ITEM_DRAW = [
         { scale: 0.50, slot: 0 }, // BRX72.png
         { scale: 0.50, slot: 1 }, // Data collector copy.png
-        { scale: 0.30, slot: 2 }, // Tribrachs.png (smaller)
-        { scale: 0.30, slot: 4 }, // battery copy.png (smaller)
+        { scale: 0.30, slot: 2 }, // Tribrachs.png
+        { scale: 0.30, slot: 4 }, // battery copy.png
         { scale: 0.45, slot: 5 }  // BRX71.png
       ];
 
@@ -1027,13 +995,14 @@
         }
       }
 
+      // face
       let faceImg = null;
-      if (punchState.active && punchState.time < punchState.duration * 0.5 &&
-          hud.angryFace && hud.angryFace.complete) {
+      if (punchState.active && punchState.time < punchState.duration * 0.5 && hud.angryFace && hud.angryFace.complete) {
         faceImg = hud.angryFace;
       } else if (hud.happyFace && hud.happyFace.complete) {
         faceImg = hud.happyFace;
       }
+
       if (faceImg) {
         const scale = 0.07;
         const iw = faceImg.width * scale, ih = faceImg.height * scale;
@@ -1041,6 +1010,7 @@
         ctx.drawImage(faceImg, cx - iw/2, centerY - ih/2, iw, ih);
       }
 
+      // timer
       const timerX = colW * (6 + 0.5);
       const totalSeconds = Math.max(0, Math.floor(remainingTime));
       const minutes = Math.floor(totalSeconds / 60);
@@ -1054,9 +1024,10 @@
       ctx.fillText(timeStr, timerX, centerY + 4);
     }
 
-    // ------------ GAME UPDATE -------------
+    /**********************
+     * UPDATE
+     **********************/
     function update(dt) {
-      // preload delay
       if (gameState === "levelCompleteDelay") {
         levelCompleteDelay -= dt;
         if (levelCompleteDelay <= 0) gameState = "levelComplete";
@@ -1080,13 +1051,10 @@
       shakeT = Math.max(0, shakeT - dt);
       hitVignetteT = Math.max(0, hitVignetteT - dt);
 
+      // Smooth turn
       const turnLeft  = keys["ArrowLeft"] || keys["KeyA"] || vkeys.left;
-      const turnRight = keys["ArrowRight"] || keys["KeyD"] || vkeys.right;
+      const turnRight = keys["ArrowRight"]|| keys["KeyD"] || vkeys.right;
 
-      const forward = keys["ArrowUp"] || keys["KeyW"] || vkeys.up;
-      const back    = keys["ArrowDown"] || keys["KeyS"] || vkeys.down;
-
-      // --- Turn smoothing
       let turnInput = 0;
       if (turnLeft) turnInput -= 1;
       if (turnRight) turnInput += 1;
@@ -1102,10 +1070,13 @@
       turnVel = Math.max(-TURN_MAX, Math.min(TURN_MAX, turnVel));
       player.angle += turnVel * dt;
 
-      // --- Move smoothing
+      // Smooth move
+      const forward = keys["ArrowUp"] || keys["KeyW"] || vkeys.up;
+      const back    = keys["ArrowDown"] || keys["KeyS"] || vkeys.down;
+
       let moveInput = 0;
       if (forward) moveInput += 1;
-      if (back) moveInput -= 1;
+      if (back)    moveInput -= 1;
 
       moveVel += moveInput * MOVE_ACCEL * dt;
 
@@ -1126,7 +1097,7 @@
       if (!isSolid(newX, player.y)) player.x = newX;
       if (!isSolid(player.x, newY)) player.y = newY;
 
-      // punch timing
+      // punch animation timing
       if (punchState.active) {
         punchState.time += dt;
         if (punchState.time >= punchState.duration) {
@@ -1138,26 +1109,9 @@
 
       updateEnemies(dt);
 
-      // audio layers
-      const moving = Math.abs(moveVel) > 20;
-      footsteps.volume = moving ? 0.25 : 0.0;
-
-      let nearest = Infinity;
-      for (const e of enemies) {
-        if (e.state !== "alive") continue;
-        const d = Math.hypot(e.x - player.x, e.y - player.y);
-        if (d < nearest) nearest = d;
-      }
-      const maxHear = 7 * TILE_SIZE;
-      let hum = 0;
-      if (nearest < maxHear) {
-        hum = 1 - (nearest / maxHear);
-        hum = Math.min(1, Math.max(0, hum));
-      }
-      enemyHum.volume = hum * 0.35;
-
+      // timer
       remainingTime -= dt;
-      if (remainingTime <= 0 && gameState === "running") {
+      if (remainingTime <= 0) {
         remainingTime = 0;
         if (itemsCollected >= totalItems) {
           gameState = "levelCompleteDelay";
@@ -1169,28 +1123,28 @@
         }
       }
 
-      // 2s delay before final cut scene when last item collected
+      // win
       if (itemsCollected >= totalItems && gameState === "running") {
         gameState = "levelCompleteDelay";
         levelCompleteDelay = 2.0;
       }
     }
 
-    // ------------ GAME RENDER -------------
+    /**********************
+     * RENDER
+     **********************/
     function renderGame() {
       const w = canvas.width, h = canvas.height;
       const halfH = h / 2;
 
       ctx.clearRect(0, 0, w, h);
 
-      // Apply small screen shake
+      // shake
       ctx.save();
       if (shakeT > 0) {
         const s = (shakeT / 0.12);
         const mag = shakeMag * s;
-        const ox = (Math.random() * 2 - 1) * mag;
-        const oy = (Math.random() * 2 - 1) * mag;
-        ctx.translate(ox, oy);
+        ctx.translate((Math.random()*2-1)*mag, (Math.random()*2-1)*mag);
       }
 
       // ceiling
@@ -1200,7 +1154,7 @@
       ctx.fillStyle = ceilingGrad;
       ctx.fillRect(0, 0, w, halfH);
 
-      // floor (perspective)
+      // floor
       renderFloorPerspective(halfH);
 
       // walls
@@ -1249,15 +1203,15 @@
       // enemies
       renderEnemies(halfH);
 
-      // fist (BEFORE HUD so HUD covers it)
+      // fist (before HUD)
       const frame = getPunchFrame();
       if (frame) {
         const hudHeight = 90;
         const scale = 2.2;
         const imgW = frame.width * scale;
         const imgH = frame.height * scale;
-        const x = canvas.width / 2 - imgW / 2 + 60;
-        const y = canvas.height - hudHeight - imgH + 35;
+        const x = w / 2 - imgW / 2 + 60;
+        const y = h - hudHeight - imgH + 35;
         ctx.drawImage(frame, x, y, imgW, imgH);
       }
 
@@ -1292,12 +1246,12 @@
       // HUD
       renderHUD();
 
-      // Crosshair (center dot)
+      // Crosshair
       ctx.save();
       ctx.globalAlpha = 0.85;
       ctx.fillStyle = "#ffffff";
       ctx.beginPath();
-      ctx.arc(w / 2, h / 2, 2.2, 0, Math.PI * 2);
+      ctx.arc(w/2, h/2, 2.2, 0, Math.PI*2);
       ctx.fill();
       ctx.restore();
 
@@ -1331,11 +1285,11 @@
         ctx.fillRect(0, 0, w, h);
       }
 
-      ctx.restore(); // end shake transform
+      ctx.restore(); // end shake
     }
 
     function render() {
-      // Loading screen until key assets are ready
+      // Loading screen
       if (!areAssetsReady()) {
         ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1357,13 +1311,29 @@
       else if (gameState === "gameOver") drawFullScreenImage(screenImages.gameover);
     }
 
-    // ------------ MAIN LOOP -------------
+    /**********************
+     * MAIN LOOP (CRASH-PROOF)
+     **********************/
     let lastTime = performance.now();
+
     function loop(now) {
-      const dt = (now - lastTime) / 1000;
+      const dt = Math.min(0.05, (now - lastTime) / 1000);
       lastTime = now;
-      update(dt);
-      render();
+
+      try {
+        update(dt);
+        render();
+      } catch (err) {
+        console.error(err);
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#ff5555";
+        ctx.font = "16px monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("Game error, check console (F12).", canvas.width/2, canvas.height/2);
+      }
+
       requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
