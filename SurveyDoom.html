@@ -20,16 +20,6 @@
       touch-action: none;
     }
 
-    #game-container { margin-top: 10px; }
-
-    canvas {
-      border: 2px solid #444;
-      background: #000;
-      display: block;
-      max-width: 100%;
-      touch-action: none;
-    }
-
     #title {
       margin-top: 8px;
       font-weight: 700;
@@ -39,16 +29,34 @@
       color: #888;
     }
 
+    #game-container {
+      margin-top: 10px;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+    }
+
+    canvas {
+      border: 2px solid #444;
+      background: #000;
+      display: block;
+      touch-action: none;
+      /* JS sets width/height responsively */
+    }
+
     #hud {
       text-align: center;
       margin-top: 8px;
       font-size: 14px;
       color: #bbb;
-      padding-bottom: 120px;
+      padding-bottom: 130px; /* space for touch controls */
+      width: 100%;
+      max-width: 980px;
     }
 
     #controls { font-size: 12px; color: #777; }
     #objective { font-size: 13px; color: #aaa; margin-top: 4px; }
+    #status { margin-top: 6px; }
 
     /* ---------------- MOBILE CONTROLS ---------------- */
     #touch-controls {
@@ -56,62 +64,65 @@
       left: 0;
       right: 0;
       bottom: 0;
-      height: 120px;
+      height: 130px;
       display: none;
       align-items: center;
       justify-content: space-between;
-      padding: 14px;
+      padding: 14px 16px 16px;
       z-index: 50;
       pointer-events: none;
-      background: linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0));
+      background: linear-gradient(to top, rgba(0,0,0,0.40), rgba(0,0,0,0));
     }
 
-    .pad {
-      display: grid;
-      grid-template-columns: 56px 56px 56px;
-      grid-template-rows: 56px 56px;
-      gap: 10px;
+    .left-controls, .right-controls {
       pointer-events: auto;
       user-select: none;
       -webkit-user-select: none;
       -webkit-touch-callout: none;
     }
 
-    .btn {
-      width: 56px;
-      height: 56px;
-      border-radius: 14px;
-      border: 2px solid rgba(255,255,255,0.15);
-      background: rgba(30,30,35,0.65);
-      color: rgba(255,255,255,0.85);
-      font-weight: 800;
-      font-size: 18px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 6px 16px rgba(0,0,0,0.45);
+    /* Joystick */
+    .joystick {
+      width: 118px;
+      height: 118px;
+      border-radius: 999px;
+      position: relative;
+      border: 2px solid rgba(255,255,255,0.10);
+      background: rgba(30,30,35,0.28); /* more transparent */
+      box-shadow: 0 10px 24px rgba(0,0,0,0.35);
       touch-action: none;
+      overflow: hidden;
     }
 
-    .btn:active,
-    .btn.active {
-      transform: translateY(1px);
-      background: rgba(60,60,70,0.80);
-      border-color: rgba(255,255,255,0.28);
+    .joystick::after {
+      content: "";
+      position: absolute;
+      inset: 16px;
+      border-radius: 999px;
+      border: 1px dashed rgba(255,255,255,0.10);
+      opacity: 0.7;
     }
 
-    .punch-wrap {
-      pointer-events: auto;
-      user-select: none;
-      -webkit-user-select: none;
+    .stick {
+      width: 52px;
+      height: 52px;
+      border-radius: 999px;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      border: 2px solid rgba(255,255,255,0.12);
+      background: rgba(220,220,240,0.18); /* more transparent */
+      box-shadow: 0 8px 16px rgba(0,0,0,0.35);
     }
 
+    /* Punch */
     .punch {
-      width: 104px;
-      height: 104px;
+      width: 108px;
+      height: 108px;
       border-radius: 26px;
-      border: 2px solid rgba(255,255,255,0.18);
-      background: rgba(120,25,25,0.65);
+      border: 2px solid rgba(255,255,255,0.12);
+      background: rgba(120,25,25,0.28); /* more transparent */
       color: rgba(255,255,255,0.92);
       font-weight: 900;
       letter-spacing: 0.04em;
@@ -119,13 +130,13 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 10px 20px rgba(0,0,0,0.55);
+      box-shadow: 0 12px 26px rgba(0,0,0,0.40);
       touch-action: none;
     }
 
     .punch:active {
       transform: translateY(1px);
-      background: rgba(170,30,30,0.80);
+      background: rgba(170,30,30,0.36);
     }
   </style>
 </head>
@@ -141,23 +152,19 @@
     <div id="controls">
       W / S – Move &nbsp; | &nbsp; A / D or ← / → – Turn &nbsp; | &nbsp; Space – Punch &nbsp; | &nbsp; Q – Floor Quality
     </div>
-    <div id="objective">
-      Objective: Retrieve all 5 GPS components before time runs out.
-    </div>
+    <div id="objective">Objective: Retrieve all 5 GPS components before time runs out.</div>
     <div id="status"></div>
   </div>
 
+  <!-- Touch controls -->
   <div id="touch-controls" aria-label="Mobile controls">
-    <div class="pad">
-      <div class="btn" id="btn-left"  title="Turn left">⟵</div>
-      <div class="btn" id="btn-up"    title="Forward">▲</div>
-      <div class="btn" id="btn-right" title="Turn right">⟶</div>
-      <div class="btn" id="btn-down"  title="Back">▼</div>
-      <div style="width:56px;height:56px;"></div>
-      <div style="width:56px;height:56px;"></div>
+    <div class="left-controls">
+      <div class="joystick" id="joystick">
+        <div class="stick" id="stick"></div>
+      </div>
     </div>
 
-    <div class="punch-wrap">
+    <div class="right-controls">
       <div class="punch" id="btn-punch" title="Punch">PUNCH</div>
     </div>
   </div>
@@ -173,28 +180,65 @@
     const statusEl = document.getElementById("status");
     const bgm = document.getElementById("bgm");
 
-    canvas.width = 960;
-    canvas.height = 540;
+    // Internal render size (keeps ray count stable)
+    const BASE_W = 960;
+    const BASE_H = 540;
+    canvas.width = BASE_W;
+    canvas.height = BASE_H;
 
-    function loadImage(path) {
-      const img = new Image();
-      img.src = path;
-      return img;
-    }
-
-    function isImgReady(img) {
-      return !!(img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0);
-    }
-
+    function loadImage(path) { const img = new Image(); img.src = path; return img; }
+    function isImgReady(img) { return !!(img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0); }
     function drawFullScreenImage(img) {
       const w = canvas.width, h = canvas.height;
-      if (!isImgReady(img)) {
-        ctx.fillStyle = "#000";
-        ctx.fillRect(0, 0, w, h);
-        return;
-      }
+      if (!isImgReady(img)) { ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h); return; }
       ctx.drawImage(img, 0, 0, w, h);
     }
+
+    /**********************
+     * RESPONSIVE CANVAS FIT
+     **********************/
+    const touchControlsEl = document.getElementById("touch-controls");
+    const isTouch = window.matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
+    if (isTouch) touchControlsEl.style.display = "flex";
+
+    function fitCanvasToScreen() {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+
+      // Reserve space for title + HUD + touch controls (only on touch)
+      const titleH = document.getElementById("title").offsetHeight + 12;
+      const hudH = document.getElementById("hud").offsetHeight;
+      const controlsH = isTouch ? 140 : 0;
+
+      // We only need to reserve a *bit* of HUD space; HUD can scroll, but canvas should fit well.
+      // In landscape, HUD is smaller, so this helps it “fill the screen”.
+      const reserve = isTouch ? (titleH + 30 + controlsH) : (titleH + 30);
+
+      const availW = vw;
+      const availH = Math.max(220, vh - reserve);
+
+      const aspect = BASE_W / BASE_H;
+
+      let cssW = availW;
+      let cssH = cssW / aspect;
+
+      if (cssH > availH) {
+        cssH = availH;
+        cssW = cssH * aspect;
+      }
+
+      // Slight padding in landscape so it doesn't touch edges
+      const pad = (vw > vh) ? 8 : 0;
+      cssW = Math.max(240, cssW - pad);
+      cssH = Math.max(140, cssH - pad / aspect);
+
+      canvas.style.width = Math.floor(cssW) + "px";
+      canvas.style.height = Math.floor(cssH) + "px";
+    }
+
+    window.addEventListener("resize", fitCanvasToScreen);
+    window.addEventListener("orientationchange", () => setTimeout(fitCanvasToScreen, 100));
+    fitCanvasToScreen();
 
     /**********************
      * GAME STATE / SCREENS
@@ -316,15 +360,14 @@
     const depthBuffer = new Array(NUM_RAYS);
 
     /**********************
-     * INPUT (keyboard + touch)
+     * INPUT
      **********************/
     const keys = {};
-    const vkeys = { left:false, right:false, up:false, down:false };
 
-    const touchControlsEl = document.getElementById("touch-controls");
-    const isTouch = window.matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
-    if (isTouch) touchControlsEl.style.display = "flex";
+    // Joystick output (-1..1)
+    const joy = { x: 0, y: 0, active: false };
 
+    // Floor quality toggle
     let FLOOR_RES = 2;
 
     window.addEventListener("keydown", (e) => {
@@ -355,35 +398,93 @@
       if (gameState === "levelComplete" || gameState === "gameOver") resetGameCompletely();
     }
 
-    function bindHoldButton(el, onDown, onUp) {
-      const pointers = new Set();
+    // Tap canvas (desktop click / mobile tap) advances or punches
+    canvas.addEventListener("pointerdown", (e) => {
+      startBgm();
+      e.preventDefault();
+      if (!isTouch) handlePrimaryAction();
+      // On touch, punches are via PUNCH button to avoid accidental taps while aiming
+      if (gameState !== "running" && isTouch) handlePrimaryAction();
+    }, { passive:false });
 
-      const down = (ev) => {
-        startBgm();
-        ev.preventDefault();
-        pointers.add(ev.pointerId ?? "mouse");
-        el.classList.add("active");
-        onDown();
-      };
+    /**********************
+     * JOYSTICK (touch)
+     **********************/
+    const joystickEl = document.getElementById("joystick");
+    const stickEl = document.getElementById("stick");
 
-      const up = (ev) => {
-        ev.preventDefault();
-        pointers.delete(ev.pointerId ?? "mouse");
-        if (pointers.size === 0) el.classList.remove("active");
-        onUp();
-      };
+    const JOY_DEADZONE = 0.12;   // normalized
+    const JOY_MAX = 1.0;
 
-      el.addEventListener("pointerdown", down, { passive:false });
-      el.addEventListener("pointerup", up, { passive:false });
-      el.addEventListener("pointercancel", up, { passive:false });
-      el.addEventListener("pointerleave", up, { passive:false });
+    let joyPointerId = null;
+    let joyCenter = { x: 0, y: 0 };
+    const joyRadius = 46; // pixels, for knob travel
+
+    function setStickVisual(nx, ny) {
+      const px = nx * joyRadius;
+      const py = ny * joyRadius;
+      stickEl.style.transform = `translate(calc(-50% + ${px}px), calc(-50% + ${py}px))`;
     }
 
-    bindHoldButton(document.getElementById("btn-left"),  () => vkeys.left  = true, () => vkeys.left  = false);
-    bindHoldButton(document.getElementById("btn-right"), () => vkeys.right = true, () => vkeys.right = false);
-    bindHoldButton(document.getElementById("btn-up"),    () => vkeys.up    = true, () => vkeys.up    = false);
-    bindHoldButton(document.getElementById("btn-down"),  () => vkeys.down  = true, () => vkeys.down  = false);
+    function setJoy(nx, ny) {
+      // clamp
+      const mag = Math.hypot(nx, ny);
+      if (mag > 1) { nx /= mag; ny /= mag; }
 
+      // deadzone
+      const m = Math.hypot(nx, ny);
+      if (m < JOY_DEADZONE) {
+        joy.x = 0; joy.y = 0;
+        setStickVisual(0, 0);
+        return;
+      }
+
+      // scale out of deadzone so it ramps smoothly
+      const scaled = Math.min(1, (m - JOY_DEADZONE) / (1 - JOY_DEADZONE));
+      const ux = nx / m;
+      const uy = ny / m;
+
+      joy.x = ux * scaled;
+      joy.y = uy * scaled;
+
+      setStickVisual(joy.x, joy.y);
+    }
+
+    if (isTouch) {
+      joystickEl.addEventListener("pointerdown", (e) => {
+        startBgm();
+        e.preventDefault();
+        joyPointerId = e.pointerId;
+        joy.active = true;
+
+        const r = joystickEl.getBoundingClientRect();
+        joyCenter.x = r.left + r.width / 2;
+        joyCenter.y = r.top + r.height / 2;
+
+        joystickEl.setPointerCapture(e.pointerId);
+        setJoy((e.clientX - joyCenter.x) / joyRadius, (e.clientY - joyCenter.y) / joyRadius);
+      }, { passive:false });
+
+      joystickEl.addEventListener("pointermove", (e) => {
+        if (!joy.active || e.pointerId !== joyPointerId) return;
+        e.preventDefault();
+        setJoy((e.clientX - joyCenter.x) / joyRadius, (e.clientY - joyCenter.y) / joyRadius);
+      }, { passive:false });
+
+      const joyUp = (e) => {
+        if (e.pointerId !== joyPointerId) return;
+        e.preventDefault();
+        joy.active = false;
+        joyPointerId = null;
+        joy.x = 0; joy.y = 0;
+        setStickVisual(0, 0);
+      };
+
+      joystickEl.addEventListener("pointerup", joyUp, { passive:false });
+      joystickEl.addEventListener("pointercancel", joyUp, { passive:false });
+    }
+
+    // Punch button
     (function bindPunchOnce(){
       const el = document.getElementById("btn-punch");
       let pressed = false;
@@ -393,7 +494,6 @@
         ev.preventDefault();
         if (pressed) return;
         pressed = true;
-        el.classList.add("active");
 
         if (gameState === "running") {
           if (!punchState.active) startPunch();
@@ -405,57 +505,12 @@
       const release = (ev) => {
         ev.preventDefault();
         pressed = false;
-        el.classList.remove("active");
       };
 
       el.addEventListener("pointerup", release, { passive:false });
       el.addEventListener("pointercancel", release, { passive:false });
       el.addEventListener("pointerleave", release, { passive:false });
     })();
-
-    // Mobile drag-to-look with deadzone
-    let lookPointerId = null;
-    let lookLastX = 0;
-    const LOOK_SENS = 0.006;
-    const LOOK_DEADZONE = 6;
-
-    // Single pointer handler (prevents double-binding bugs)
-    canvas.addEventListener("pointerdown", (e) => {
-      startBgm();
-      e.preventDefault();
-
-      if (isTouch) {
-        lookPointerId = e.pointerId;
-        lookLastX = e.clientX;
-        // On mobile, tapping canvas during running should punch, but not while dragging.
-        // We only punch if player isn't trying to drag (tiny movement later handled in pointermove).
-        if (gameState !== "running") handlePrimaryAction();
-      } else {
-        handlePrimaryAction();
-      }
-    }, { passive:false });
-
-    canvas.addEventListener("pointermove", (e) => {
-      if (!isTouch) return;
-      if (lookPointerId !== e.pointerId) return;
-
-      const dx = e.clientX - lookLastX;
-      lookLastX = e.clientX;
-      if (Math.abs(dx) < LOOK_DEADZONE) return;
-
-      turnVel += dx * LOOK_SENS;
-      turnVel = Math.max(-TURN_MAX, Math.min(TURN_MAX, turnVel));
-    });
-
-    canvas.addEventListener("pointerup", (e) => {
-      if (lookPointerId === e.pointerId) lookPointerId = null;
-      // If it was a quick tap (no real drag), allow punch
-      if (isTouch && gameState === "running") handlePrimaryAction();
-    });
-
-    canvas.addEventListener("pointercancel", (e) => {
-      if (lookPointerId === e.pointerId) lookPointerId = null;
-    });
 
     /**********************
      * ENEMIES / ITEMS
@@ -639,7 +694,6 @@
       punchState.justHit = false;
 
       if (navigator.vibrate) navigator.vibrate(20);
-
       try { punchSound.currentTime = 0; punchSound.play().catch(() => {}); } catch {}
 
       performPunch();
@@ -708,11 +762,7 @@
      * TEXTURES
      **********************/
     const wallTextureFiles = ["Wall1.png", "Wall2.png", "wall3.png"];
-    const wallTextures = wallTextureFiles.map(f => {
-      const img = new Image();
-      img.src = f;
-      return img;
-    });
+    const wallTextures = wallTextureFiles.map(f => { const img = new Image(); img.src = f; return img; });
 
     const floorImg = new Image();
     floorImg.src = "floor 69.jpg";
@@ -746,7 +796,7 @@
     const FLOOR_TEX_WORLD_SCALE = 0.22;
 
     function sampleFloorRGB(wx, wy) {
-      if (!floorTex.ready || !floorTex.data || floorTex.w <= 0 || floorTex.h <= 0) return [48,48,52];
+      if (!floorTex.ready || !floorTex.data) return [48,48,52];
       const tw = floorTex.w, th = floorTex.h;
 
       let tx = Math.floor(wx * FLOOR_TEX_WORLD_SCALE) % tw;
@@ -818,7 +868,7 @@
     }
 
     /**********************
-     * SPRITES (GUARDED)
+     * SPRITES (safe)
      **********************/
     const burglarSprites = { standing:null, walk1:null, walk2:null, away:null, hit:null, falling:null, dead:null };
 
@@ -837,9 +887,27 @@
     loadBurglarSprite("falling","Falling1.png");
     loadBurglarSprite("dead","Dead.png");
 
-    function pickReadySprite(...imgs) {
-      for (const img of imgs) if (isImgReady(img)) return img;
-      return null;
+    function chooseBurglarFrame(enemy) {
+      const standing = isImgReady(burglarSprites.standing) ? burglarSprites.standing : null;
+      if (!standing) return null;
+
+      const hit     = isImgReady(burglarSprites.hit)     ? burglarSprites.hit     : null;
+      const falling = isImgReady(burglarSprites.falling) ? burglarSprites.falling : null;
+      const dead    = isImgReady(burglarSprites.dead)    ? burglarSprites.dead    : null;
+      const away    = isImgReady(burglarSprites.away)    ? burglarSprites.away    : null;
+      const walk1   = isImgReady(burglarSprites.walk1)   ? burglarSprites.walk1   : null;
+      const walk2   = isImgReady(burglarSprites.walk2)   ? burglarSprites.walk2   : null;
+
+      if (enemy.state === "finalHit") return hit || standing;
+      if (enemy.state === "dying")    return falling || standing;
+      if (enemy.state === "dead")     return dead || standing;
+      if (enemy.hitTimer > 0)         return hit || standing;
+
+      if (!enemy.moving) return standing;
+      if (enemy.movingAway && away) return away;
+      if (enemy.animFrame === 0 && walk1) return walk1;
+      if (enemy.animFrame === 1 && walk2) return walk2;
+      return standing;
     }
 
     /**********************
@@ -856,11 +924,9 @@
     hud.angryFace = loadImage("Angry face.png");
 
     function areAssetsReady() {
-      // Only require the assets needed to show the game without crashing
       if (!isImgReady(screenImages.title) || !isImgReady(screenImages.prescreen)) return false;
       if (!isImgReady(hud.bar)) return false;
       if (!floorTex.ready) return false;
-      // Standing sprite is required, others can stream in safely now
       if (!isImgReady(burglarSprites.standing)) return false;
       return true;
     }
@@ -896,7 +962,7 @@
     }
 
     /**********************
-     * ENEMY RENDER (SAFE)
+     * ENEMY RENDER
      **********************/
     function getVisibleEnemies() {
       const result = [];
@@ -910,31 +976,6 @@
       }
       result.sort((a,b) => b.dist - a.dist);
       return result;
-    }
-
-    function chooseBurglarFrame(enemy) {
-      // Only return sprites that are actually loaded
-      const standing = isImgReady(burglarSprites.standing) ? burglarSprites.standing : null;
-      if (!standing) return null;
-
-      const hit     = isImgReady(burglarSprites.hit)     ? burglarSprites.hit     : null;
-      const falling = isImgReady(burglarSprites.falling) ? burglarSprites.falling : null;
-      const dead    = isImgReady(burglarSprites.dead)    ? burglarSprites.dead    : null;
-      const away    = isImgReady(burglarSprites.away)    ? burglarSprites.away    : null;
-      const walk1   = isImgReady(burglarSprites.walk1)   ? burglarSprites.walk1   : null;
-      const walk2   = isImgReady(burglarSprites.walk2)   ? burglarSprites.walk2   : null;
-
-      if (enemy.state === "finalHit") return hit || standing;
-      if (enemy.state === "dying")    return falling || standing;
-      if (enemy.state === "dead")     return dead || standing;
-      if (enemy.hitTimer > 0)         return hit || standing;
-
-      if (!enemy.moving) return standing;
-      if (enemy.movingAway && away) return away;
-      if (enemy.animFrame === 0 && walk1) return walk1;
-      if (enemy.animFrame === 1 && walk2) return walk2;
-
-      return standing;
     }
 
     function renderEnemies(halfH) {
@@ -978,10 +1019,7 @@
       const hudTop = h - hudHeight;
 
       if (isImgReady(hud.bar)) ctx.drawImage(hud.bar, 0, hudTop, w, hudHeight);
-      else {
-        ctx.fillStyle = "#222";
-        ctx.fillRect(0, hudTop, w, hudHeight);
-      }
+      else { ctx.fillStyle="#222"; ctx.fillRect(0, hudTop, w, hudHeight); }
 
       const columns = 7;
       const colW = w / columns;
@@ -1008,21 +1046,16 @@
           let ih = img.height * cfg.scale;
 
           const clamp = Math.min(1, maxW / iw, maxH / ih);
-          iw *= clamp;
-          ih *= clamp;
+          iw *= clamp; ih *= clamp;
 
           const cx = colW * (cfg.slot + 0.5);
           ctx.drawImage(img, cx - iw/2, centerY - ih/2, iw, ih);
         }
       }
 
-      // face
       let faceImg = null;
-      if (punchState.active && punchState.time < punchState.duration * 0.5 && isImgReady(hud.angryFace)) {
-        faceImg = hud.angryFace;
-      } else if (isImgReady(hud.happyFace)) {
-        faceImg = hud.happyFace;
-      }
+      if (punchState.active && punchState.time < punchState.duration * 0.5 && isImgReady(hud.angryFace)) faceImg = hud.angryFace;
+      else if (isImgReady(hud.happyFace)) faceImg = hud.happyFace;
 
       if (faceImg) {
         const scale = 0.07;
@@ -1031,7 +1064,6 @@
         ctx.drawImage(faceImg, cx - iw/2, centerY - ih/2, iw, ih);
       }
 
-      // timer
       const timerX = colW * (6 + 0.5);
       const totalSeconds = Math.max(0, Math.floor(remainingTime));
       const minutes = Math.floor(totalSeconds / 60);
@@ -1071,16 +1103,20 @@
       shakeT = Math.max(0, shakeT - dt);
       hitVignetteT = Math.max(0, hitVignetteT - dt);
 
-      const turnLeft  = keys["ArrowLeft"] || keys["KeyA"] || vkeys.left;
-      const turnRight = keys["ArrowRight"]|| keys["KeyD"] || vkeys.right;
+      // Turn input (keyboard + joystick)
+      const turnLeft  = keys["ArrowLeft"] || keys["KeyA"];
+      const turnRight = keys["ArrowRight"]|| keys["KeyD"];
 
       let turnInput = 0;
       if (turnLeft) turnInput -= 1;
       if (turnRight) turnInput += 1;
 
+      // joystick X adds analog turning
+      turnInput += joy.x;
+
       turnVel += turnInput * TURN_ACCEL * dt;
 
-      if (turnInput === 0) {
+      if (Math.abs(turnInput) < 0.02) {
         const drag = TURN_FRICTION * dt;
         if (turnVel > 0) turnVel = Math.max(0, turnVel - drag);
         else turnVel = Math.min(0, turnVel + drag);
@@ -1089,16 +1125,20 @@
       turnVel = Math.max(-TURN_MAX, Math.min(TURN_MAX, turnVel));
       player.angle += turnVel * dt;
 
-      const forward = keys["ArrowUp"] || keys["KeyW"] || vkeys.up;
-      const back    = keys["ArrowDown"] || keys["KeyS"] || vkeys.down;
+      // Move input (keyboard + joystick)
+      const forward = keys["ArrowUp"] || keys["KeyW"];
+      const back    = keys["ArrowDown"] || keys["KeyS"];
 
       let moveInput = 0;
       if (forward) moveInput += 1;
       if (back)    moveInput -= 1;
 
+      // joystick Y: up is negative in screen coords, so invert
+      moveInput += (-joy.y);
+
       moveVel += moveInput * MOVE_ACCEL * dt;
 
-      if (moveInput === 0) {
+      if (Math.abs(moveInput) < 0.02) {
         const drag = MOVE_FRICTION * dt;
         if (moveVel > 0) moveVel = Math.max(0, moveVel - drag);
         else moveVel = Math.min(0, moveVel + drag);
@@ -1254,7 +1294,7 @@
 
       renderHUD();
 
-      // crosshair
+      // Crosshair
       ctx.save();
       ctx.globalAlpha = 0.85;
       ctx.fillStyle = "#ffffff";
@@ -1263,7 +1303,7 @@
       ctx.fill();
       ctx.restore();
 
-      // hit marker
+      // Hit marker X
       if (hitMarkerT > 0) {
         const a = hitMarkerT / 0.15;
         const size = 10;
@@ -1280,6 +1320,7 @@
         ctx.restore();
       }
 
+      // Vignette (time low + hit flash)
       const lowTime = remainingTime <= 15 ? (1 - remainingTime / 15) : 0;
       const hitFlash = hitVignetteT > 0 ? (hitVignetteT / 0.20) : 0;
       const vig = Math.min(0.75, lowTime * 0.55 + hitFlash * 0.45);
@@ -1292,7 +1333,7 @@
         ctx.fillRect(0, 0, w, h);
       }
 
-      ctx.restore(); // shake end
+      ctx.restore();
     }
 
     function render() {
@@ -1318,37 +1359,15 @@
     }
 
     /**********************
-     * MAIN LOOP (NO BLACK FLASH)
+     * MAIN LOOP
      **********************/
     let lastTime = performance.now();
-    let errorToastT = 0;
-
     function loop(now) {
       const dt = Math.min(0.05, (now - lastTime) / 1000);
       lastTime = now;
 
-      try {
-        update(dt);
-        render();
-      } catch (err) {
-        console.error(err);
-        // no screen wipe
-        errorToastT = 1.2;
-      }
-
-      if (errorToastT > 0) {
-        errorToastT -= dt;
-        ctx.save();
-        ctx.globalAlpha = Math.min(1, errorToastT);
-        ctx.fillStyle = "rgba(0,0,0,0.35)";
-        ctx.fillRect(10, 10, 260, 34);
-        ctx.fillStyle = "#ffb3b3";
-        ctx.font = "14px system-ui";
-        ctx.textAlign = "left";
-        ctx.textBaseline = "middle";
-        ctx.fillText("Minor error, still running…", 18, 27);
-        ctx.restore();
-      }
+      try { update(dt); render(); }
+      catch (err) { console.error(err); }
 
       requestAnimationFrame(loop);
     }
