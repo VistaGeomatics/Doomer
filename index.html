@@ -379,11 +379,11 @@
     const joy = { x: 0, y: 0, active: false, id: null, cx: 0, cy: 0, radius: 0 };
 
     // Make joystick calm + usable
-    const JOY_DEADZONE = 0.30;     // bigger deadzone = less twitchy
-    const JOY_TURN_SCALE = 0.30;   // calmer turning   // calmer turning
+    const JOY_DEADZONE = 0.35;     // bigger deadzone = less twitchy     // bigger deadzone = less twitchy
+    const JOY_TURN_SCALE = 0.24;   // calmer turning   // calmer turning   // calmer turning
     const JOY_MOVE_SCALE = 0.70;   // calmer movement   // calmer movement
-    const JOY_CURVE_EXP = 2.2;     // soft near center
-    const JOY_SMOOTH = 14;         // input smoothing
+    const JOY_CURVE_EXP = 2.6;     // softer near center     // soft near center
+    const JOY_SMOOTH = 8;          // stronger smoothing (lower = smoother)         // input smoothing
 
     const joyFiltered = { x: 0, y: 0 };
 
@@ -962,24 +962,89 @@ floorImg.onerror = () => {
      * RAYCAST
      **********************/
     function castRay(rayAngle) {
-      rayAngle = (rayAngle + Math.PI*2) % (Math.PI*2);
-      const cos = Math.cos(rayAngle), sin = Math.sin(rayAngle);
+  rayAngle = (rayAngle + Math.PI * 2) % (Math.PI * 2);
 
-      const stepSize = 4;
-      let rayX = player.x, rayY = player.y, distance = 0;
-      let hitTile = 0, hitMapX = 0, hitMapY = 0;
+  const rayDirX = Math.cos(rayAngle);
+  const rayDirY = Math.sin(rayAngle);
 
-      while (distance < MAX_DEPTH) {
-        rayX += cos * stepSize;
-        rayY += sin * stepSize;
-        distance += stepSize;
+  // Position in tile units
+  const posX = player.x / TILE_SIZE;
+  const posY = player.y / TILE_SIZE;
 
-        const tx = Math.floor(rayX / TILE_SIZE);
-        const ty = Math.floor(rayY / TILE_SIZE);
+  let mapX = Math.floor(posX);
+  let mapY = Math.floor(posY);
 
-        if (tx < 0 || tx >= MAP_WIDTH || ty < 0 || ty >= MAP_HEIGHT) {
-          hitTile = 1; hitMapX = tx; hitMapY = ty; break;
-        }
+  // Length of ray from one x or y-side to next x or y-side (in tile units)
+  const deltaDistX = (rayDirX === 0) ? 1e30 : Math.abs(1 / rayDirX);
+  const deltaDistY = (rayDirY === 0) ? 1e30 : Math.abs(1 / rayDirY);
+
+  let stepX, stepY;
+  let sideDistX, sideDistY;
+
+  if (rayDirX < 0) {
+    stepX = -1;
+    sideDistX = (posX - mapX) * deltaDistX;
+  } else {
+    stepX = 1;
+    sideDistX = (mapX + 1.0 - posX) * deltaDistX;
+  }
+
+  if (rayDirY < 0) {
+    stepY = -1;
+    sideDistY = (posY - mapY) * deltaDistY;
+  } else {
+    stepY = 1;
+    sideDistY = (mapY + 1.0 - posY) * deltaDistY;
+  }
+
+  let hitTile = 0;
+  let side = 0; // 0 = x-side, 1 = y-side
+  let guard = 0;
+
+  // DDA
+  while (guard++ < 256) {
+    if (sideDistX < sideDistY) {
+      sideDistX += deltaDistX;
+      mapX += stepX;
+      side = 0;
+    } else {
+      sideDistY += deltaDistY;
+      mapY += stepY;
+      side = 1;
+    }
+
+    if (mapX < 0 || mapX >= MAP_WIDTH || mapY < 0 || mapY >= MAP_HEIGHT) {
+      hitTile = 1;
+      break;
+    }
+
+    const t = tileAt(mapX, mapY);
+    if (t !== 0) {
+      hitTile = t;
+      break;
+    }
+  }
+
+  // Distance to wall (in tile units), then convert to world units
+  let perpDist;
+  if (hitTile === 0) {
+    perpDist = (MAX_DEPTH / TILE_SIZE);
+  } else if (side === 0) {
+    perpDist = (mapX - posX + (1 - stepX) / 2) / (rayDirX || 1e-9);
+  } else {
+    perpDist = (mapY - posY + (1 - stepY) / 2) / (rayDirY || 1e-9);
+  }
+
+  // Keep it sane
+  if (!isFinite(perpDist)) perpDist = (MAX_DEPTH / TILE_SIZE);
+  perpDist = Math.max(0.0001, Math.min(perpDist, MAX_DEPTH / TILE_SIZE));
+
+  const distance = perpDist * TILE_SIZE;
+  const worldX = player.x + rayDirX * distance;
+  const worldY = player.y + rayDirY * distance;
+
+  return { distance, tile: hitTile, hitMapX: mapX, hitMapY: mapY, worldX, worldY, side };
+}
 
         const t = tileAt(tx, ty);
         if (t !== 0) { hitTile = t; hitMapX = tx; hitMapY = ty; break; }
@@ -1275,10 +1340,11 @@ floorImg.onerror = () => {
         const rayScreenPos = i / NUM_RAYS - 0.5;
         const rayAngle = player.angle + rayScreenPos * FOV;
 
-        const { distance, tile, hitMapX, hitMapY, worldX, worldY } = castRay(rayAngle);
+        const { distance, tile, hitMapX, hitMapY, worldX, worldY, side } = castRay(rayAngle);
         if (tile === 0) { depthBuffer[i] = MAX_DEPTH; continue; }
 
-        const corrected = distance * Math.cos(rayAngle - player.angle);
+        let corrected = distance * Math.cos(rayAngle - player.angle);
+        corrected = Math.max(8, corrected); // prevent extreme near-wall blowup
         depthBuffer[i] = corrected;
 
         const wallHeight = (TILE_SIZE / corrected) * 220;
@@ -1295,8 +1361,9 @@ floorImg.onerror = () => {
           const hitYmod = ((worldY % TILE_SIZE) + TILE_SIZE) % TILE_SIZE;
 
           let u;
-          if (hitXmod < 1 || hitXmod > TILE_SIZE - 1) u = hitYmod / TILE_SIZE;
-          else u = hitXmod / TILE_SIZE;
+// Use which side we hit (DDA) to choose a stable texture coordinate (reduces shimmering/clipping)
+if (typeof side !== "undefined" && side === 0) u = hitYmod / TILE_SIZE;   // vertical wall, use Y
+else u = hitXmod / TILE_SIZE;                                            // horizontal wall, use X
 
           const texX = Math.floor(u * texW);
           ctx.drawImage(tex, texX, 0, 1, texH, i, colY, 1, colHeight);
