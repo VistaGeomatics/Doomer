@@ -787,17 +787,58 @@
     const floorTex = { ready:false, w:0, h:0, data:null };
 
     floorImg.onload = () => {
-      const c = document.createElement("canvas");
-      c.width = floorImg.width;
-      c.height = floorImg.height;
-      const cctx = c.getContext("2d", { willReadFrequently: true });
-      cctx.drawImage(floorImg, 0, 0);
-      const imgd = cctx.getImageData(0, 0, c.width, c.height);
-      floorTex.ready = true;
-      floorTex.w = c.width;
-      floorTex.h = c.height;
-      floorTex.data = imgd.data;
-    };
+  try {
+    const c = document.createElement("canvas");
+    c.width = floorImg.width;
+    c.height = floorImg.height;
+
+    // Mobile Safari can be picky about getContext options, so use a safe fallback.
+    let cctx = null;
+    try { cctx = c.getContext("2d", { willReadFrequently: true }); } catch (e) {}
+    if (!cctx) cctx = c.getContext("2d");
+    if (!cctx) throw new Error("2D context unavailable");
+
+    cctx.drawImage(floorImg, 0, 0);
+    const imgd = cctx.getImageData(0, 0, c.width, c.height);
+
+    floorTex.ready = true;
+    floorTex.w = c.width;
+    floorTex.h = c.height;
+    floorTex.data = imgd.data;
+  } catch (e) {
+    // If anything fails, fall back to a simple procedural floor texture
+    const w = 64, h = 64;
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        const v = ((x ^ y) & 8) ? 75 : 55; // subtle checker
+        data[i] = v; data[i+1] = v; data[i+2] = v; data[i+3] = 255;
+      }
+    }
+    floorTex.ready = true;
+    floorTex.w = w;
+    floorTex.h = h;
+    floorTex.data = data;
+  }
+};
+
+floorImg.onerror = () => {
+  // Same procedural fallback if the image fails to load
+  const w = 64, h = 64;
+  const data = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const v = ((x ^ y) & 8) ? 75 : 55;
+      data[i] = v; data[i+1] = v; data[i+2] = v; data[i+3] = 255;
+    }
+  }
+  floorTex.ready = true;
+  floorTex.w = w;
+  floorTex.h = h;
+  floorTex.data = data;
+};
 
     const floorBuf = document.createElement("canvas");
     const floorCtx = floorBuf.getContext("2d", { willReadFrequently: true });
