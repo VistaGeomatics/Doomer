@@ -19,7 +19,9 @@
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       overflow: hidden;
       touch-action: none; /* stop scroll/pinch conflicts */
-    }
+          overscroll-behavior: none;
+      -webkit-tap-highlight-color: transparent;
+}
 
     /* Fullscreen stage */
     #stage {
@@ -378,8 +380,8 @@
 
     // Make joystick calm + usable
     const JOY_DEADZONE = 0.30;     // bigger deadzone = less twitchy
-    const JOY_TURN_SCALE = 0.38;   // calmer turning
-    const JOY_MOVE_SCALE = 0.72;   // calmer movement
+    const JOY_TURN_SCALE = 0.30;   // calmer turning   // calmer turning
+    const JOY_MOVE_SCALE = 0.70;   // calmer movement   // calmer movement
     const JOY_CURVE_EXP = 2.2;     // soft near center
     const JOY_SMOOTH = 14;         // input smoothing
 
@@ -390,7 +392,7 @@
       const r = joy.radius;
       const px = nx * r;
       const py = ny * r;
-      joyStick.style.transform = `translate(calc(-50% + ${px}px), calc(-50% + ${py}px))`;
+      joyStick.style.transform = `translate3d(calc(-50% + ${px}px), calc(-50% + ${py}px), 0)`;
     }
     function resetJoy() {
       joy.x = 0; joy.y = 0; joy.active = false; joy.id = null;
@@ -402,46 +404,63 @@
     }
 
     function onJoyDown(ev) {
-      startBgm();
-      ev.preventDefault();
-      ev.stopPropagation();
+  startBgm();
+  ev.preventDefault();
+  ev.stopPropagation();
 
-      const rect = joyBase.getBoundingClientRect();
-      joy.cx = rect.left + rect.width / 2;
-      joy.cy = rect.top + rect.height / 2;
+  const rect = joyBase.getBoundingClientRect();
 
-      // More travel = less sensitive
-      joy.radius = Math.min(rect.width, rect.height) * 0.32; // ~38px on 118px base
-      joy.active = true;
-      joy.id = ev.pointerId;
+  // Treat the finger-down point as "neutral" to prevent an instant jump.
+  // This removes the common "jerk" when you don't touch dead-center.
+  joy.cx = ev.clientX;
+  joy.cy = ev.clientY;
 
-      joyBase.setPointerCapture(ev.pointerId);
-      onJoyMove(ev);
-    }
+  // More travel = less sensitivity (bigger radius).
+  joy.radius = Math.min(rect.width, rect.height) * 0.42; // ~50px on 118px base
+  joy.active = true;
+  joy.id = ev.pointerId;
+
+  joyBase.setPointerCapture(ev.pointerId);
+  setJoyVisual(0, 0);
+  joy.x = 0; joy.y = 0;
+}
 
     function onJoyMove(ev) {
-      if (!joy.active || ev.pointerId !== joy.id) return;
-      ev.preventDefault();
-      ev.stopPropagation();
+  if (!joy.active || ev.pointerId !== joy.id) return;
+  ev.preventDefault();
+  ev.stopPropagation();
 
-      const dx = ev.clientX - joy.cx;
-      const dy = ev.clientY - joy.cy;
+  // Use the pointer-down point as neutral center.
+  const dx = ev.clientX - joy.cx;
+  const dy = ev.clientY - joy.cy;
 
-      const dist = Math.hypot(dx, dy) || 1;
-      const max = joy.radius;
+  const dist = Math.hypot(dx, dy) || 1;
+  const max = joy.radius;
 
-      // Clamp within radius
-      const clamped = Math.min(dist, max);
-      const nx = (dx / dist) * (clamped / max);
-      const ny = (dy / dist) * (clamped / max);
+  // Clamp within radius
+  const clamped = Math.min(dist, max);
+  const nx = (dx / dist) * (clamped / max);
+  const ny = (dy / dist) * (clamped / max);
 
-      // Deadzone
-      const mag = Math.hypot(nx, ny);
-      if (mag < JOY_DEADZONE) {
-        joy.x = 0; joy.y = 0;
-        setJoyVisual(0, 0);
-        return;
-      }
+  // Deadzone
+  const mag = Math.hypot(nx, ny);
+  if (mag < JOY_DEADZONE) {
+    joy.x = 0; joy.y = 0;
+    setJoyVisual(0, 0);
+    return;
+  }
+
+  // Re-normalize after deadzone so it ramps nicely
+  const t = (mag - JOY_DEADZONE) / (1 - JOY_DEADZONE);
+  const ux = (nx / mag) * t;
+  const uy = (ny / mag) * t;
+
+  // Curve for smoothness near center
+  joy.x = curve(ux);
+  joy.y = curve(uy);
+
+  setJoyVisual(ux, uy);
+}
 
       // Re-normalize after deadzone so it ramps nicely
       const t = (mag - JOY_DEADZONE) / (1 - JOY_DEADZONE);
@@ -464,6 +483,8 @@
 
     joyBase.addEventListener("pointerdown", onJoyDown, { passive:false });
     joyBase.addEventListener("pointermove", onJoyMove, { passive:false });
+    // Some browsers deliver higher-frequency pointer data via pointerrawupdate
+    joyBase.addEventListener("pointerrawupdate", onJoyMove, { passive:false });
     joyBase.addEventListener("pointerup", onJoyUp, { passive:false });
     joyBase.addEventListener("pointercancel", onJoyUp, { passive:false });
 
