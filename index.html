@@ -462,17 +462,6 @@
   setJoyVisual(ux, uy);
 }
 
-      // Re-normalize after deadzone so it ramps nicely
-      const t = (mag - JOY_DEADZONE) / (1 - JOY_DEADZONE);
-      const ux = (nx / mag) * t;
-      const uy = (ny / mag) * t;
-
-      // Curve for smoothness near center
-      joy.x = curve(ux);
-      joy.y = curve(uy);
-
-      setJoyVisual(ux, uy);
-    }
 
     function onJoyUp(ev) {
       if (ev.pointerId !== joy.id) return;
